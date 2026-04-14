@@ -1701,22 +1701,33 @@ async function exportDeptZip() {
   const periodRange = `中華民國${yy}年${mm}月01日至${yy}年${mm}月${new Date(yy, today.getMonth()+1, 0).getDate()}日`;
 
   const depts = groupByDept(rawRows || []);
+  const deptList = Object.keys(map).sort();
 
-  Object.entries(map).forEach(([dept, summaryItems]) => {
+  // ── ① 各部門 Excel ──────────────────────────────────
+  deptList.forEach(dept => {
     const deptRows = depts[dept] || [];
     const wb = XLSX.utils.book_new();
-
-    // 工作表1：損益表
-    const wsGL = buildPLSheet(dept, deptRows, companyName, periodTitle, periodRange);
-    XLSX.utils.book_append_sheet(wb, wsGL, '損益表');
-
-    // 工作表2：分類帳
-    const wsLedger = buildGLSheet(deptRows);
-    XLSX.utils.book_append_sheet(wb, wsLedger, '分類帳');
-
-    const wbBin = XLSX.write(wb, { bookType: 'xlsx', type: 'array', cellStyles: true });
-    zip.file(`${dept}_損益明細.xlsx`, wbBin);
+    XLSX.utils.book_append_sheet(wb, buildPLSheet(dept, deptRows, companyName, periodTitle, periodRange), '損益表');
+    XLSX.utils.book_append_sheet(wb, buildGLSheet(deptRows), '分類帳');
+    zip.file(`${dept}_損益明細.xlsx`, XLSX.write(wb, { bookType:'xlsx', type:'array', cellStyles:true }));
   });
+
+  // ── ② 全公司加總 Excel ──────────────────────────────
+  clearPlCache();
+  const allRows = rawRows || [];
+  const coWb = XLSX.utils.book_new();
+
+  // 工作表：全公司損益表（各科目加總，比照部門格式，單一 F 欄為合計金額）
+  XLSX.utils.book_append_sheet(coWb,
+    buildCompanyTotalSheet(allRows, deptList, depts, companyName, periodTitle, periodRange),
+    '全公司損益表');
+
+  // 工作表：各部門橫向彙總對照
+  XLSX.utils.book_append_sheet(coWb,
+    buildCompanySummarySheet(deptList, depts, companyName, periodTitle), '部門彙總');
+
+  zip.file(`全公司_損益彙總.xlsx`,
+    XLSX.write(coWb, { bookType:'xlsx', type:'array', cellStyles:true }));
 
   const blob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE' });
   const url  = URL.createObjectURL(blob);
@@ -1730,7 +1741,324 @@ async function exportDeptZip() {
   btn.disabled = false;
   btn.textContent = '⬇ 下載各部門 Excel（ZIP）';
   setStatus('m3-status', 'ok',
-    `✓ 已下載 ZIP，含 ${Object.keys(map).length} 個部門（損益表＋分類帳）：${Object.keys(map).join('、')}`);
+    `✓ 已下載 ZIP，含 ${deptList.length} 個部門 ＋ 全公司彙總 Excel：${deptList.join('、')}`);
+}
+
+// ── 全公司各科目加總損益表 ─────────────────────────────────
+function buildCompanyTotalSheet(allRows, deptList, depts, companyName, periodTitle, periodRange) {
+  // 以全部 rows 合併計算
+  clearPlCache();
+  const coVals = buildPlValues(allRows);
+
+  // 同時取得各部門值，用於計算構成比（以全公司營業收入合計為基準）
+  const revenueBase = Math.abs(coVals['營業收入合計']) || 1;
+
+  const ws = {};
+  const merges = [];
+  const R = r => r - 1;
+
+  // ── 欄寬（比照部門 Excel，但 D 預算欄改為「部門數」說明）──
+  ws['!cols'] = [
+    { wch: 3.6 },   // A 大分類
+    { wch: 14 },    // B 中分類
+    { wch: 22 },    // C 細項
+    { wch: 15.6 },  // D 部門數（說明用）
+    { wch: 9.6 },   // E 構成比
+    { wch: 15.6 },  // F 全公司合計金額
+    { wch: 9.6 },   // G 佔收入比
+    { wch: 60 },    // H 備註
+  ];
+
+  // ── 標題列 ──────────────────────────────────────────
+  setCell(ws, 'A1', companyName,  cs({ sz:24, align:'center' }));
+  merges.push({ s:{r:0,c:0}, e:{r:0,c:7} });
+  setCell(ws, 'A2', periodTitle + '　全公司合計', cs({ sz:18, align:'center' }));
+  merges.push({ s:{r:1,c:0}, e:{r:1,c:7} });
+  setCell(ws, 'A3', periodRange,  cs({ sz:12, align:'center' }));
+  merges.push({ s:{r:2,c:0}, e:{r:2,c:7} });
+  setCell(ws, 'A4', `部門數：${deptList.length} 個（${deptList.join('、')}）`, cs({ sz:11 }));
+  merges.push({ s:{r:3,c:0}, e:{r:3,c:6} });
+  setCell(ws, 'H4', '單位：元', cs({ sz:12, align:'right' }));
+
+  // ── 表頭（row 5-6）────────────────────────────────
+  const hS  = cs({ sz:12, align:'center', borderL:'medium', borderR:'thin',   borderT:'medium', borderB:'thin' });
+  const hM  = cs({ sz:12, align:'center', borderL:'thin',   borderR:'thin',   borderT:'medium', borderB:'thin' });
+  const hR  = cs({ sz:12, align:'center', borderL:'thin',   borderR:'medium', borderT:'medium', borderB:'thin' });
+  const h2  = cs({ sz:12, align:'center', borderL:'thin',   borderR:'thin',   borderT:'thin',   borderB:'thin' });
+  setCell(ws, 'A5', '會計科目', hS); merges.push({ s:{r:4,c:0}, e:{r:5,c:2} });
+  setCell(ws, 'D5', '各部門加總', hM); merges.push({ s:{r:4,c:3}, e:{r:4,c:4} });
+  setCell(ws, 'F5', '全公司合計', hM); merges.push({ s:{r:4,c:5}, e:{r:4,c:6} });
+  setCell(ws, 'H5', '備註', hR); merges.push({ s:{r:4,c:7}, e:{r:5,c:7} });
+  setCell(ws, 'D6', '金額',    h2);
+  setCell(ws, 'E6', '構成比',  h2);
+  setCell(ws, 'F6', '金額',    h2);
+  setCell(ws, 'G6', '佔收入%', h2);
+
+  // ── 預先計算各部門加總（逐科目相加，用於 D 欄驗算）──────
+  // D 欄填各部門金額加總（與 F 欄相同，但透過部門逐一加總）
+  const deptSum = {};
+  PL_ROWS.forEach(([,,,, kbName]) => {
+    if (!kbName) return;
+    let s = 0;
+    deptList.forEach(dept => {
+      clearPlCache();
+      const dv = buildPlValues(depts[dept] || []);
+      s += dv[kbName] ?? 0;
+    });
+    deptSum[kbName] = s;
+  });
+  // 恢復全公司 cache
+  clearPlCache();
+  buildPlValues(allRows); // 重建 cache
+
+  // ── 資料列（複用 PL_ROWS 結構）────────────────────
+  PL_ROWS.forEach(([rowNum, labelA, labelB, labelC, kbName]) => {
+    const r = R(rowNum);
+    const lBorder = labelA ? 'medium' : 'thin';
+
+    const baseS = cs({ sz:12, borderL:lBorder,  borderR:'thin', borderT:'thin', borderB:'thin' });
+    const numS  = cs({ sz:12, numFmt:FMT_NUM,   borderL:'thin', borderR:'thin', borderT:'thin', borderB:'thin' });
+    const pctS  = cs({ sz:12, numFmt:FMT_PCT,   borderL:'thin', borderR:'thin', borderT:'thin', borderB:'thin' });
+    const noteS = cs({ sz:10,                   borderL:'thin', borderR:'medium',borderT:'thin', borderB:'thin' });
+
+    // A 欄
+    if (labelA !== null) setCell(ws, enc(r,0), labelA, baseS);
+    else ws[enc(r,0)] = { v:'', t:'s', s:baseS };
+
+    // B 欄
+    if (labelB !== null) {
+      setCell(ws, enc(r,1), labelB, cs({ sz:12, borderL:'thin', borderR:'thin', borderT:'thin', borderB:'thin' }));
+      if (labelC === null) merges.push({ s:{r,c:1}, e:{r,c:2} });
+    } else {
+      ws[enc(r,1)] = { v:'', t:'s', s:cs({ sz:12, borderL:'thin', borderR:'thin', borderT:'thin', borderB:'thin' }) };
+    }
+
+    // C 欄
+    if (labelC !== null) setCell(ws, enc(r,2), labelC, cs({ sz:12, borderL:'thin', borderR:'thin', borderT:'thin', borderB:'thin' }));
+    else ws[enc(r,2)] = { v:'', t:'s', s:cs({ sz:12, borderL:'thin', borderR:'thin', borderT:'thin', borderB:'thin' }) };
+
+    // D 欄（各部門加總驗算）
+    const dAmt = kbName ? (deptSum[kbName] ?? 0) : 0;
+    setCell(ws, enc(r,3), dAmt, numS);
+
+    // E 欄（構成比 = D / 基準收入）
+    const pctVal = revenueBase ? dAmt / revenueBase : 0;
+    setCell(ws, enc(r,4), pctVal, pctS);
+
+    // F 欄（全公司計算引擎值）
+    const fAmt = kbName ? (coVals[kbName] ?? 0) : 0;
+    setCell(ws, enc(r,5), fAmt, numS);
+
+    // G 欄（佔收入比 = F / 基準收入）
+    const gPctVal = revenueBase ? fAmt / revenueBase : 0;
+    setCell(ws, enc(r,6), gPctVal, pctS);
+
+    // H 欄
+    setCell(ws, enc(r,7), ' ', noteS);
+  });
+
+  // ── 簽核列 ──────────────────────────────────────────
+  const signS = cs({ sz:12 });
+  [['B73','董'],['C73','總'],['E73','副'],['F73','                  協'],['H73','    覆                                製'],
+   ['B74','事'],['C74','經'],['E74','總'],['F74','                  理'],['H74','    核                                表'],
+   ['B75','長'],['C75','理'],['E75','經'],
+   ['E76','理']].forEach(([addr, val]) => setCell(ws, addr, val, signS));
+
+  ws['!ref'] = XLSX.utils.encode_range({ s:{r:0,c:0}, e:{r:75,c:7} });
+  ws['!merges'] = merges;
+  return ws;
+}
+
+// ── 全公司各部門損益彙總對照表 ─────────────────────────────
+function buildCompanySummarySheet(deptList, depts, companyName, periodTitle) {
+  const ws = {};
+  const merges = [];
+
+  // 欄寬：A(科目類) + B(科目名) + 每個部門 + 合計
+  const dataCols = deptList.length + 1; // 各部門 + 合計
+  ws['!cols'] = [
+    { wch: 16 },   // A 大分類
+    { wch: 22 },   // B 科目名稱
+    ...deptList.map(() => ({ wch: 14 })),
+    { wch: 15 },   // 合計欄
+  ];
+
+  // ── 標題 ──────────────────────────────────────────
+  const titleS = cs({ sz: 16, align: 'center', bold: true });
+  const subS   = cs({ sz: 12, align: 'center' });
+  setCell(ws, enc(0,0), companyName, titleS);
+  merges.push({ s:{r:0,c:0}, e:{r:0,c:1+dataCols} });
+  setCell(ws, enc(1,0), periodTitle + '　各部門彙總', subS);
+  merges.push({ s:{r:1,c:0}, e:{r:1,c:1+dataCols} });
+
+  // ── 表頭列（row 2）────────────────────────────────
+  const hdrS = cs({ sz:11, bold:true, align:'center',
+    bg:'D9E1F2',
+    borderL:'medium', borderR:'thin', borderT:'medium', borderB:'medium' });
+  const hdrLastS = cs({ sz:11, bold:true, align:'center',
+    bg:'D9E1F2',
+    borderL:'thin', borderR:'medium', borderT:'medium', borderB:'medium' });
+  const hdrLabelS = cs({ sz:11, bold:true, align:'center',
+    bg:'D9E1F2',
+    borderL:'medium', borderR:'thin', borderT:'medium', borderB:'medium' });
+
+  setCell(ws, enc(2,0), '科目類別', hdrLabelS);
+  setCell(ws, enc(2,1), '科目名稱', hdrS);
+  merges.push({ s:{r:2,c:0}, e:{r:2,c:1} }); // 合併前兩欄表頭
+
+  deptList.forEach((dept, i) => {
+    setCell(ws, enc(2, 2+i), dept, i < deptList.length-1 ? hdrS : cs({ sz:11, bold:true, align:'center', bg:'D9E1F2', borderL:'thin', borderR:'thin', borderT:'medium', borderB:'medium' }));
+  });
+  setCell(ws, enc(2, 2+deptList.length), '合計', hdrLastS);
+
+  // ── 預先計算每個部門的損益值 ─────────────────────────
+  const deptVals = {};
+  deptList.forEach(dept => {
+    clearPlCache();
+    deptVals[dept] = buildPlValues(depts[dept] || []);
+  });
+  // 全公司合計：合併所有部門的 rawRows
+  clearPlCache();
+  const allRows2 = deptList.flatMap(d => depts[d] || []);
+  const coVals = buildPlValues(allRows2);
+
+  // ── 資料列定義（科目類 + 科目名稱 + 是否合計列） ───────
+  // [category, name, isTotal]
+  const SUMMARY_ROWS = [
+    ['營業收入',      '銷貨收入',              false],
+    [null,            '減：銷貨退回與折讓',     false],
+    [null,            '銷貨收入淨額',           true ],
+    [null,            '營業收入-物流費',         false],
+    [null,            '營業收入-其他配送',       false],
+    [null,            '營業收入-轉運收入',       false],
+    [null,            '營業收入-勞務收入',       false],
+    [null,            '營業收入-電子商務',       false],
+    [null,            '營業收入-獎勵金',         false],
+    [null,            '營業收入合計',            true ],
+    ['營業成本',      '期初商品存貨',            false],
+    [null,            '進貨',                    false],
+    [null,            '營業成本-運費',           false],
+    [null,            '營業成本-薪資',           false],
+    [null,            '營業成本-包裝費',         false],
+    [null,            '營業成本-獎勵金',         false],
+    [null,            '營業成本-其他',           false],
+    [null,            '減：進貨退出與折讓',       false],
+    [null,            '營業成本合計',            true ],
+    ['營業毛利',      '營業毛利（或毛損)',       true ],
+    ['營業費用',      '固定薪資',               false],
+    [null,            '加班費',                  false],
+    [null,            '年終獎金',               false],
+    [null,            '伙食費',                  false],
+    [null,            '勞保費',                  false],
+    [null,            '健保費',                  false],
+    [null,            '兼職保險、團保費',        false],
+    [null,            '職工福利金',             false],
+    [null,            '退職退休金',             false],
+    [null,            '訓練費',                  false],
+    [null,            '人員招募',               false],
+    [null,            '員工酬勞及董監酬勞',     false],
+    [null,            '租金',                    false],
+    [null,            '折舊',                    false],
+    [null,            '各項攤提',               false],
+    [null,            '修繕費',                  false],
+    [null,            '水電費',                  false],
+    [null,            '清潔費',                  false],
+    [null,            '保全費',                  false],
+    [null,            '郵電費',                  false],
+    [null,            '保險費(產險)',             false],
+    [null,            '運費',                    false],
+    [null,            '旅費',                    false],
+    [null,            '車輛費',                  false],
+    [null,            '交際費',                  false],
+    [null,            '文具印刷費',             false],
+    [null,            '勞務費',                  false],
+    [null,            '雜費',                    false],
+    [null,            '捐贈',                    false],
+    [null,            '稅捐',                    false],
+    [null,            '權利金',                  false],
+    [null,            '呆帳損失',               false],
+    [null,            '營業費用總額',            true ],
+    ['營業利益',      '營業利益（或損失)',       true ],
+    ['非營業收支',    '利息收入',               false],
+    [null,            '其他收入',               false],
+    [null,            '租金收入',               false],
+    [null,            '非營業支出',             false],
+    [null,            '非營業收支總額',          true ],
+    ['稅前損益',      '稅前損益',               true ],
+    ['所得稅',        '所得稅費用',             false],
+    ['本期損益',      '本期損益',               true ],
+  ];
+
+  // ── 樣式 ─────────────────────────────────────────
+  const mkCell = (isTotal, isLast) => cs({
+    sz: 11,
+    bold: isTotal,
+    bg: isTotal ? 'EBF1DE' : undefined,
+    numFmt: FMT_NUM,
+    borderL: 'thin', borderR: isLast ? 'medium' : 'thin',
+    borderT: 'thin', borderB: isTotal ? 'medium' : 'thin',
+  });
+  const mkLabel = (isTotal, isFirst) => cs({
+    sz: 11,
+    bold: isTotal,
+    bg: isTotal ? 'EBF1DE' : undefined,
+    align: isTotal ? 'left' : undefined,
+    borderL: isFirst ? 'medium' : 'thin',
+    borderR: 'thin', borderT: 'thin',
+    borderB: isTotal ? 'medium' : 'thin',
+  });
+  const mkCat = (hasText) => cs({
+    sz: 11, bold: true, align: 'center',
+    bg: hasText ? 'D9E1F2' : undefined,
+    borderL: 'medium', borderR: 'thin', borderT: 'thin', borderB: 'thin',
+  });
+
+  // ── 填資料 ───────────────────────────────────────
+  let rowI = 3;
+  let lastCat = null;
+  const catStartRow = {}; // category -> start rowI (for vertical merge)
+  const catEndRow   = {};
+
+  SUMMARY_ROWS.forEach(([cat, name, isTotal]) => {
+    // A欄：科目類別（僅在類別首次出現時填入，事後合併）
+    if (cat !== null && cat !== lastCat) {
+      setCell(ws, enc(rowI,0), cat, mkCat(true));
+      if (lastCat !== null) catEndRow[lastCat] = rowI - 1;
+      catStartRow[cat] = rowI;
+      lastCat = cat;
+    } else {
+      ws[enc(rowI,0)] = { v:'', t:'s', s: mkCat(false) };
+    }
+
+    // B欄：科目名稱
+    setCell(ws, enc(rowI,1), name, mkLabel(isTotal, false));
+
+    // 各部門數值
+    deptList.forEach((dept, i) => {
+      const amt = deptVals[dept][name] ?? 0;
+      const isLast = i === deptList.length - 1;
+      setCell(ws, enc(rowI, 2+i), amt, mkCell(isTotal, false));
+    });
+
+    // 合計欄
+    const coAmt = coVals[name] ?? 0;
+    setCell(ws, enc(rowI, 2+deptList.length), coAmt, mkCell(isTotal, true));
+
+    rowI++;
+  });
+
+  // 最後一個 category 結束
+  if (lastCat) catEndRow[lastCat] = rowI - 1;
+
+  // A欄垂直合併同類別
+  Object.keys(catStartRow).forEach(cat => {
+    const s = catStartRow[cat], e = catEndRow[cat];
+    if (e > s) merges.push({ s:{r:s,c:0}, e:{r:e,c:0} });
+  });
+
+  ws['!ref'] = XLSX.utils.encode_range({ s:{r:0,c:0}, e:{r:rowI,c:2+deptList.length} });
+  ws['!merges'] = merges;
+  return ws;
 }
 
 // ==================== DASHBOARD ====================
