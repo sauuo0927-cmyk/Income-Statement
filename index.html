@@ -1044,6 +1044,10 @@ function runMode3() {
   const summaryRows = [];
   const deptSummaryMap = {};   // dept -> [{ code, name, dr, cr, amt }, ...]
 
+  // 取得使用者輸入的存貨金額（全公司共用同一組數字）
+  const invBegin = (window._inventoryInputs && window._inventoryInputs.periodBegin) || 0;
+  const invEnd   = (window._inventoryInputs && window._inventoryInputs.periodEnd)   || 0;
+
   Object.keys(depts).sort().forEach(dept => {
     const drows = depts[dept];
     const codeGroup = {};
@@ -1068,10 +1072,36 @@ function runMode3() {
         <td class="num" style="font-weight:600">${fmt(amt)}</td>
       </tr>`;
     });
+
+    // ── 注入期初／期末存貨（使用者手動輸入，分類帳中無對應科目）──
+    if (invBegin !== 0) {
+      deptSummaryMap[dept].push({ code:'1191', name:'期初商品存貨',    dr: invBegin, cr: 0,      amt: invBegin });
+      summaryRows.push({ code:'1191', name:'期初商品存貨',    dept, dr: invBegin, cr: 0,      amt: invBegin });
+      html += `<tr style="background:var(--accent-light)">
+        <td style="font-family:var(--mono)">1191</td>
+        <td>期初商品存貨 <span style="font-size:10px;color:var(--accent);">（手動輸入）</span></td>
+        <td><span class="badge badge-dept">${dept}</span></td>
+        <td class="num">${fmt(invBegin)}</td><td class="num">0</td>
+        <td class="num" style="font-weight:600">${fmt(invBegin)}</td>
+      </tr>`;
+    }
+    if (invEnd !== 0) {
+      deptSummaryMap[dept].push({ code:'inv-end', name:'減：期末商品存貨', dr: 0, cr: invEnd, amt: -invEnd });
+      summaryRows.push({ code:'inv-end', name:'減：期末商品存貨', dept, dr: 0, cr: invEnd, amt: -invEnd });
+      html += `<tr style="background:var(--accent-light)">
+        <td style="font-family:var(--mono)">—</td>
+        <td>減：期末商品存貨 <span style="font-size:10px;color:var(--accent);">（手動輸入）</span></td>
+        <td><span class="badge badge-dept">${dept}</span></td>
+        <td class="num">0</td><td class="num">${fmt(invEnd)}</td>
+        <td class="num" style="font-weight:600">${fmt(-invEnd)}</td>
+      </tr>`;
+    }
   });
 
   // 儲存供 export 使用
   window._m3DeptSummary = deptSummaryMap;
+  // 清除 P&L 快取，確保 exportDeptZip 和 renderDashboard 重新計算（含存貨值）
+  clearPlCache();
 
   html += '</tbody></table></div>';
 
@@ -1166,7 +1196,11 @@ function updateInventoryInputs() {
   const begin = parseAmt(document.getElementById('inv-begin').value) || 0;
   const end   = parseAmt(document.getElementById('inv-end').value)   || 0;
   window._inventoryInputs = { periodBegin: begin, periodEnd: end };
-  clearPlCache(); // 存貨異動後清快取，下次計算會重算
+  clearPlCache();
+  // 若已有結帳資料，提示重新執行
+  if (glData['m3'] && glData['m3'].length) {
+    setStatus('m3-status', 'warn', '⚠ 存貨金額已變更，請重新點擊「執行結帳作業」以套用新數值');
+  }
 }
 
 // ==================== EXCEL HANDLING ====================
