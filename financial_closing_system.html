@@ -1,0 +1,2030 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EgentHub 財務結帳與複核系統</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+  :root {
+    --bg: #f5f4f0;
+    --surface: #ffffff;
+    --surface2: #f0ede6;
+    --border: #ddd9d0;
+    --border-strong: #b8b3a8;
+    --text: #1a1916;
+    --text-muted: #6b6760;
+    --text-hint: #9e9b96;
+    --accent: #2d5a27;
+    --accent-light: #e8f0e6;
+    --accent-mid: #4a8a42;
+    --warn: #8a4a10;
+    --warn-light: #fdf0e5;
+    --danger: #8a1a1a;
+    --danger-light: #fde8e8;
+    --info: #1a3d6e;
+    --info-light: #e5ecf6;
+    --mono: 'JetBrains Mono', monospace;
+    --sans: 'Noto Sans TC', sans-serif;
+    --radius: 6px;
+    --radius-lg: 10px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: var(--sans);
+    background: var(--bg);
+    color: var(--text);
+    font-size: 14px;
+    line-height: 1.6;
+    min-height: 100vh;
+  }
+
+  /* LAYOUT */
+  .shell {
+    display: grid;
+    grid-template-columns: 240px 1fr;
+    grid-template-rows: 52px 1fr;
+    min-height: 100vh;
+  }
+
+  /* TOPBAR */
+  .topbar {
+    grid-column: 1 / -1;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    padding: 0 24px;
+    gap: 12px;
+  }
+  .topbar-logo {
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    color: var(--accent);
+    text-transform: uppercase;
+  }
+  .topbar-sep { color: var(--border-strong); }
+  .topbar-title { font-size: 13px; color: var(--text-muted); }
+  .topbar-spacer { flex: 1; }
+  .topbar-badge {
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 20px;
+    background: var(--accent-light);
+    color: var(--accent);
+    font-weight: 500;
+  }
+
+  /* SIDEBAR */
+  .sidebar {
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    padding: 20px 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .sidebar-section {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    color: var(--text-hint);
+    text-transform: uppercase;
+    padding: 0 16px;
+    margin: 12px 0 4px;
+  }
+  .nav-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    cursor: pointer;
+    border-radius: 0;
+    color: var(--text-muted);
+    font-size: 13px;
+    transition: background 0.1s, color 0.1s;
+    border-left: 2px solid transparent;
+  }
+  .nav-item:hover { background: var(--surface2); color: var(--text); }
+  .nav-item.active {
+    background: var(--accent-light);
+    color: var(--accent);
+    border-left-color: var(--accent);
+    font-weight: 500;
+  }
+  .nav-icon { font-size: 14px; width: 16px; text-align: center; }
+
+  /* MAIN */
+  .main {
+    overflow-y: auto;
+    padding: 28px 32px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+
+  /* PANELS */
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+  }
+  .panel-header {
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .panel-title {
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    color: var(--text);
+    text-transform: uppercase;
+  }
+  .panel-body { padding: 20px; }
+
+  /* MODE SELECTOR */
+  .mode-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+  .mode-card {
+    border: 1.5px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 18px 20px;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+    position: relative;
+  }
+  .mode-card:hover { border-color: var(--accent-mid); background: var(--accent-light); }
+  .mode-card.selected { border-color: var(--accent); background: var(--accent-light); }
+  .mode-card.selected::after {
+    content: '✓';
+    position: absolute;
+    top: 12px; right: 14px;
+    color: var(--accent);
+    font-weight: 700;
+    font-size: 14px;
+  }
+  .mode-tag {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 6px;
+  }
+  .mode-name { font-size: 15px; font-weight: 700; margin-bottom: 4px; color: var(--text); }
+  .mode-desc { font-size: 12px; color: var(--text-muted); line-height: 1.5; }
+
+  /* FORM ELEMENTS */
+  label { font-size: 12px; font-weight: 500; color: var(--text-muted); display: block; margin-bottom: 5px; letter-spacing: 0.04em; text-transform: uppercase; }
+  input[type=text], select, textarea {
+    width: 100%;
+    padding: 8px 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    font-family: var(--sans);
+    font-size: 13px;
+    color: var(--text);
+    background: var(--surface);
+    outline: none;
+    transition: border-color 0.1s;
+  }
+  input[type=text]:focus, select:focus, textarea:focus { border-color: var(--accent-mid); }
+  textarea { font-family: var(--mono); font-size: 12px; resize: vertical; line-height: 1.5; }
+
+  .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .form-group { display: flex; flex-direction: column; gap: 5px; }
+
+  /* PASTE AREA */
+  .paste-area {
+    border: 1.5px dashed var(--border-strong);
+    border-radius: var(--radius-lg);
+    padding: 0;
+    position: relative;
+    background: var(--surface2);
+  }
+  .paste-area textarea {
+    border: none;
+    background: transparent;
+    padding: 12px 14px;
+    min-height: 140px;
+    border-radius: var(--radius-lg);
+  }
+  .paste-area textarea:focus { outline: none; }
+  .paste-hint {
+    position: absolute;
+    bottom: 8px; right: 12px;
+    font-size: 11px;
+    color: var(--text-hint);
+    font-family: var(--mono);
+    pointer-events: none;
+  }
+
+  /* BUTTONS */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 9px 18px;
+    border-radius: var(--radius);
+    font-size: 13px;
+    font-weight: 500;
+    font-family: var(--sans);
+    cursor: pointer;
+    border: 1px solid;
+    transition: all 0.12s;
+    letter-spacing: 0.02em;
+  }
+  .btn-primary {
+    background: var(--accent);
+    color: #fff;
+    border-color: var(--accent);
+  }
+  .btn-primary:hover { background: var(--accent-mid); border-color: var(--accent-mid); }
+  .btn-secondary {
+    background: var(--surface);
+    color: var(--text);
+    border-color: var(--border-strong);
+  }
+  .btn-secondary:hover { background: var(--surface2); }
+  .btn-danger { background: var(--danger); color: #fff; border-color: var(--danger); }
+  .btn-sm { padding: 5px 10px; font-size: 12px; }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+
+  /* STATUS INDICATORS */
+  .status-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px;
+    border-radius: var(--radius);
+    font-size: 12px;
+    font-weight: 500;
+  }
+  .status-idle { background: var(--surface2); color: var(--text-muted); border: 1px solid var(--border); }
+  .status-ok { background: var(--accent-light); color: var(--accent); border: 1px solid #b5d4ac; }
+  .status-warn { background: var(--warn-light); color: var(--warn); border: 1px solid #f5c89a; }
+  .status-error { background: var(--danger-light); color: var(--danger); border: 1px solid #f5bcbc; }
+  .status-info { background: var(--info-light); color: var(--info); border: 1px solid #b5c9e8; }
+
+  /* TABLE */
+  .table-wrap { overflow-x: auto; border-radius: var(--radius-lg); border: 1px solid var(--border); }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  th {
+    padding: 8px 12px;
+    background: var(--surface2);
+    font-weight: 700;
+    font-size: 11px;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    border-bottom: 1px solid var(--border);
+    text-align: left;
+    white-space: nowrap;
+  }
+  th.num, td.num { text-align: right; font-family: var(--mono); }
+  td {
+    padding: 7px 12px;
+    border-bottom: 1px solid var(--border);
+    color: var(--text);
+    vertical-align: middle;
+  }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: var(--surface2); }
+  tr.subtotal td {
+    background: var(--accent-light);
+    font-weight: 700;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--accent);
+    border-top: 1.5px solid #b5d4ac;
+    border-bottom: 1.5px solid #b5d4ac;
+  }
+  tr.dept-header td {
+    background: var(--info-light);
+    color: var(--info);
+    font-weight: 700;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 6px 12px;
+  }
+  tr.error-row td { background: var(--danger-light); color: var(--danger); }
+  .badge {
+    display: inline-block;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 2px 6px;
+    border-radius: 4px;
+    letter-spacing: 0.04em;
+  }
+  .badge-ok { background: var(--accent-light); color: var(--accent); }
+  .badge-diff { background: var(--warn-light); color: var(--warn); }
+  .badge-pass { background: var(--surface2); color: var(--text-hint); }
+  .badge-dept { background: var(--info-light); color: var(--info); }
+
+  /* SECTION HEADING */
+  .section-heading {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 14px;
+  }
+  .section-heading h3 {
+    font-size: 13px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-muted);
+  }
+  .section-line { flex: 1; height: 1px; background: var(--border); }
+
+  /* SUMMARY CARDS */
+  .summary-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+  .summary-card {
+    background: var(--surface2);
+    border-radius: var(--radius);
+    padding: 12px 14px;
+  }
+  .summary-label { font-size: 11px; color: var(--text-hint); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px; }
+  .summary-value { font-size: 20px; font-weight: 700; color: var(--text); font-family: var(--mono); }
+  .summary-value.ok { color: var(--accent); }
+  .summary-value.warn { color: var(--warn); }
+
+  /* TAB SYSTEM */
+  .tabs { display: flex; gap: 0; border-bottom: 1px solid var(--border); }
+  .tab {
+    padding: 10px 18px;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    color: var(--text-muted);
+    letter-spacing: 0.04em;
+    transition: color 0.1s;
+  }
+  .tab:hover { color: var(--text); }
+  .tab.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 700; }
+
+  /* HIDDEN */
+  .hidden { display: none !important; }
+
+  /* SPINNER */
+  .spinner {
+    display: inline-block;
+    width: 14px; height: 14px;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* COPY BTN */
+  .copy-btn {
+    font-size: 11px;
+    padding: 3px 8px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    cursor: pointer;
+    color: var(--text-muted);
+    font-family: var(--sans);
+    transition: all 0.1s;
+  }
+  .copy-btn:hover { background: var(--accent-light); color: var(--accent); border-color: var(--accent-mid); }
+
+  /* PAGE VIEWS */
+  .page { display: none; }
+  .page.active { display: flex; flex-direction: column; gap: 20px; }
+
+  /* KNOWLEDGE BASE PREVIEW */
+  .kb-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .kb-item {
+    padding: 8px 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    font-size: 12px;
+  }
+  .kb-name { font-weight: 600; margin-bottom: 2px; color: var(--text); }
+  .kb-code { font-family: var(--mono); font-size: 11px; color: var(--text-muted); }
+  .kb-pass { color: var(--text-hint); font-style: italic; }
+
+  /* DIFF NUMBER */
+  .pos { color: var(--accent); }
+  .neg { color: var(--danger); }
+  .zero { color: var(--text-hint); }
+
+  /* CHAT-LIKE PROMPT */
+  .prompt-box {
+    background: var(--info-light);
+    border: 1px solid #b5c9e8;
+    border-radius: var(--radius-lg);
+    padding: 14px 18px;
+    font-size: 13px;
+    color: var(--info);
+  }
+
+  .file-drop {
+    border: 1.5px dashed var(--border-strong);
+    border-radius: var(--radius-lg);
+    padding: 24px 20px;
+    text-align: center;
+    cursor: pointer;
+    transition: background 0.1s;
+    background: var(--surface2);
+  }
+  .file-drop:hover { background: var(--accent-light); border-color: var(--accent-mid); }
+  .file-drop-text { font-size: 13px; color: var(--text-muted); }
+  .file-drop-sub { font-size: 11px; color: var(--text-hint); margin-top: 4px; }
+  /* EXCEL UPLOAD ZONE */
+  .xl-drop {
+    border: 1.5px dashed var(--border-strong);
+    border-radius: var(--radius-lg);
+    background: var(--surface2);
+    padding: 28px 20px;
+    text-align: center;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+    position: relative;
+  }
+  .xl-drop:hover, .xl-drop.dragover {
+    background: var(--accent-light);
+    border-color: var(--accent-mid);
+  }
+  .xl-drop input[type=file] {
+    position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%;
+  }
+  .xl-drop-icon { font-size: 28px; margin-bottom: 8px; display: block; }
+  .xl-drop-text { font-size: 13px; color: var(--text-muted); font-weight: 500; }
+  .xl-drop-sub { font-size: 11px; color: var(--text-hint); margin-top: 4px; }
+  .xl-drop.loaded { border-style: solid; border-color: var(--accent-mid); background: var(--accent-light); }
+  .xl-file-info {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 14px;
+    background: var(--accent-light);
+    border: 1px solid #b5d4ac;
+    border-radius: var(--radius);
+    font-size: 12px;
+  }
+  .xl-file-name { font-weight: 600; color: var(--accent); flex: 1; }
+  .xl-file-rows { color: var(--text-muted); font-family: var(--mono); }
+  .xl-remove {
+    font-size: 11px; padding: 2px 8px;
+    background: none; border: 1px solid var(--border-strong);
+    border-radius: 4px; cursor: pointer; color: var(--danger);
+    font-family: var(--sans); transition: background 0.1s;
+  }
+  .xl-remove:hover { background: var(--danger-light); }
+  .sheet-selector {
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  }
+  .sheet-btn {
+    padding: 4px 10px; font-size: 11px; border-radius: 4px; cursor: pointer;
+    border: 1px solid var(--border-strong); background: var(--surface);
+    color: var(--text-muted); font-family: var(--sans); transition: all 0.1s;
+  }
+  .sheet-btn:hover { background: var(--surface2); }
+  .sheet-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+</style>
+</head>
+<body>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+
+<div class="shell">
+  <!-- TOP BAR -->
+  <header class="topbar">
+    <span class="topbar-logo">EgentHub</span>
+    <span class="topbar-sep">／</span>
+    <span class="topbar-title">財務結帳系統</span>
+    <div class="topbar-spacer"></div>
+    <span class="topbar-badge" id="kb-status">知識庫：載入中…</span>
+  </header>
+
+  <!-- SIDEBAR -->
+  <nav class="sidebar">
+    <div class="sidebar-section">功能</div>
+    <div class="nav-item active" onclick="switchPage('dashboard')" id="nav-dashboard">
+      <span class="nav-icon">◈</span> 數據儀表板
+    </div>
+    <div class="nav-item" onclick="switchPage('mode3')" id="nav-mode3">
+      <span class="nav-icon">③</span> 每月3號結帳
+    </div>
+    <div class="sidebar-section">工具</div>
+    <div class="nav-item" onclick="switchPage('kb')" id="nav-kb">
+      <span class="nav-icon">⊟</span> 科目對照表
+    </div>
+    <div class="nav-item" onclick="switchPage('sample')" id="nav-sample">
+      <span class="nav-icon">⊙</span> 範本說明
+    </div>
+  </nav>
+
+  <!-- MAIN -->
+  <main class="main">
+
+    <!-- DASHBOARD PAGE -->
+    <div class="page active" id="page-dashboard">
+      <div class="section-heading"><h3>數據儀表板</h3><div class="section-line"></div>
+        <span style="font-size:11px;color:var(--text-hint);font-weight:400;">資料來源：最近一次3號結帳</span>
+        <div style="display:flex;align-items:center;gap:6px;margin-left:auto;">
+          <label style="font-size:11px;color:var(--text-muted);text-transform:none;letter-spacing:0;font-weight:400;margin:0;">期間</label>
+          <select id="dash-year" style="font-size:12px;padding:3px 8px;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text);" onchange="onDateChange()"></select>
+          <span style="font-size:12px;color:var(--text-muted);">年</span>
+          <select id="dash-month" style="font-size:12px;padding:3px 8px;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text);" onchange="onDateChange()">
+            <option value="">全部月份</option>
+            <option value="01">01月</option><option value="02">02月</option><option value="03">03月</option>
+            <option value="04">04月</option><option value="05">05月</option><option value="06">06月</option>
+            <option value="07">07月</option><option value="08">08月</option><option value="09">09月</option>
+            <option value="10">10月</option><option value="11">11月</option><option value="12">12月</option>
+          </select>
+          <span style="font-size:12px;color:var(--text-muted);">月</span>
+        </div>
+      </div>
+
+      <div id="dash-empty" style="padding:48px 0;text-align:center;color:var(--text-hint);">
+        <div style="font-size:32px;margin-bottom:12px;">◈</div>
+        <div style="font-size:13px;">尚無資料，請先執行「每月3號結帳」</div>
+        <div style="margin-top:12px;">
+          <button class="btn btn-primary btn-sm" onclick="switchPage('mode3')">前往結帳</button>
+        </div>
+      </div>
+
+      <div id="dash-content" class="hidden">
+        <!-- KPI cards -->
+        <div id="dash-kpis" style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px;"></div>
+
+        <!-- Charts row 1: 部門費用橫條 + 科目分佈圓餅 -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;">
+          <div class="panel">
+            <div class="panel-header"><span class="panel-title">各部門費用金額</span></div>
+            <div class="panel-body" style="padding:16px;">
+              <div style="position:relative;height:260px;"><canvas id="chart-dept-bar"></canvas></div>
+            </div>
+          </div>
+          <div class="panel">
+            <div class="panel-header"><span class="panel-title">費用科目分佈</span></div>
+            <div class="panel-body" style="padding:16px;">
+              <div style="position:relative;height:260px;"><canvas id="chart-cat-pie"></canvas></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Charts row 2: 借貸差值 + TOP5科目 -->
+        <div style="display:grid;grid-template-columns:3fr 2fr;gap:16px;margin-bottom:16px;">
+          <div class="panel">
+            <div class="panel-header">
+              <span class="panel-title">部門借貸對比</span>
+              <div style="flex:1"></div>
+              <select id="dash-dept-filter" style="font-size:12px;padding:3px 8px;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text);" onchange="renderDeptDetail()">
+                <option value="">全部部門</option>
+              </select>
+            </div>
+            <div class="panel-body" style="padding:16px;">
+              <div style="position:relative;height:240px;"><canvas id="chart-dr-cr"></canvas></div>
+            </div>
+          </div>
+          <div class="panel">
+            <div class="panel-header"><span class="panel-title">金額前10科目</span></div>
+            <div class="panel-body" style="padding:16px 0;">
+              <div id="dash-top10" style="padding:0 16px;"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Detail table -->
+        <div class="panel">
+          <div class="panel-header">
+            <span class="panel-title">部門明細</span>
+            <div style="flex:1"></div>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <label style="font-size:11px;color:var(--text-muted);margin:0;text-transform:none;letter-spacing:0;font-weight:400;">排序</label>
+              <select id="dash-sort-col" style="font-size:12px;padding:3px 8px;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text);" onchange="renderDeptDetail()">
+                <option value="dept">部門</option>
+                <option value="code">科目代號</option>
+                <option value="name">科目名稱</option>
+                <option value="dr">借方</option>
+                <option value="cr">貸方</option>
+                <option value="amt">金額</option>
+              </select>
+              <button id="dash-sort-dir-btn" onclick="toggleSortDir()" style="padding:3px 8px;font-size:12px;border:1px solid var(--border);border-radius:4px;background:var(--surface);cursor:pointer;color:var(--text-muted);font-family:var(--sans);min-width:36px;">↑</button>
+              <input type="text" id="dash-search" placeholder="搜尋…" style="width:140px;font-size:12px;" oninput="renderDeptDetail()">
+            </div>
+          </div>
+          <div class="panel-body" style="padding:0;">
+            <div id="dash-detail-table" style="overflow-x:auto;"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- MODE 3 PAGE -->
+    <div class="page" id="page-mode3">
+      <div class="section-heading"><h3>每月3號結帳 — 部門／科目實績彙總</h3><div class="section-line"></div></div>
+
+      <div class="panel">
+        <div class="panel-header"><span class="panel-title">上傳損益分類帳 Excel</span></div>
+        <div class="panel-body" style="display:flex;flex-direction:column;gap:14px;">
+          <div>
+            <label>上傳 .xlsx / .xls 檔案（必要欄位：部門代號、日期、傳票號碼、會計項目代號、會計項目名稱、摘要、借方金額、貸方金額）</label>
+            <div class="xl-drop" id="m3-drop" ondragover="handleDragOver(event,'m3-drop')" ondragleave="handleDragLeave(event,'m3-drop')" ondrop="handleDrop(event,'m3')">
+              <input type="file" accept=".xlsx,.xls,.ods" onchange="handleFile(event,'m3')">
+              <span class="xl-drop-icon">📊</span>
+              <div class="xl-drop-text">拖放 Excel 檔案至此，或點擊選擇檔案</div>
+              <div class="xl-drop-sub">支援 .xlsx / .xls 格式</div>
+            </div>
+            <div id="m3-file-info" class="hidden" style="margin-top:8px;"></div>
+            <div id="m3-sheet-selector" class="hidden" style="margin-top:8px;">
+              <label>選擇工作表</label>
+              <div class="sheet-selector" id="m3-sheet-btns"></div>
+            </div>
+          </div>
+          <div class="btn-row">
+            <button class="btn btn-primary" onclick="runMode3()">▶ 執行結帳作業</button>
+            <button class="btn btn-secondary btn-sm" onclick="clearMode3()">清除</button>
+          </div>
+          <div id="m3-status" class="status-bar status-idle">等待上傳 Excel 檔案…</div>
+        </div>
+      </div>
+
+      <div id="m3-results" class="hidden">
+        <div class="tabs" style="margin-bottom:-1px;">
+          <div class="tab active" onclick="switchTab('m3','error')">異常報告</div>
+          <div class="tab" onclick="switchTab('m3','summary')">彙總表</div>
+        </div>
+        <div style="border:1px solid var(--border);border-top:none;border-radius:0 0 var(--radius-lg) var(--radius-lg);background:var(--surface);padding:20px;">
+          <div id="m3-tab-error"></div>
+          <div id="m3-tab-summary" class="hidden"></div>
+        </div>
+      </div>
+    </div>
+
+
+    <!-- KB PAGE -->
+    <div class="page" id="page-kb">
+      <div class="section-heading"><h3>科目對照表 — 知識庫</h3><div class="section-line"></div></div>
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">查詢科目對照規則</span>
+          <div style="flex:1"></div>
+          <input type="text" id="kb-search" placeholder="搜尋科目名稱…" style="width:200px;" oninput="renderKB()">
+        </div>
+        <div class="panel-body">
+          <div id="kb-table"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SAMPLE PAGE -->
+    <div class="page" id="page-sample">
+      <div class="section-heading"><h3>資料格式說明與範本</h3><div class="section-line"></div></div>
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">損益分類帳欄位說明</span>
+          <div style="flex:1"></div>
+          <button class="btn btn-secondary btn-sm" onclick="downloadTemplate()">⬇ 下載 Excel 範本</button>
+        </div>
+        <div class="panel-body">
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>欄位位置／名稱</th><th>說明</th><th>必填</th><th>範例</th></tr></thead>
+              <tbody>
+                <tr><td><span class="badge badge-dept">A欄</span> 會計項目代號</td><td>固定讀取 A 欄（不依標題）</td><td><span class="badge badge-ok">必填</span></td><td style="font-family:var(--mono)">4100</td></tr>
+                <tr><td><span class="badge badge-dept">B欄</span> 會計項目名稱</td><td>固定讀取 B 欄（不依標題）</td><td><span class="badge badge-ok">必填</span></td><td>銷貨收入</td></tr>
+                <tr><td>日期</td><td>依標題名稱辨識</td><td><span class="badge badge-pass">選填</span></td><td style="font-family:var(--mono)">2024-12-01</td></tr>
+                <tr><td>傳票號碼</td><td>依標題名稱辨識</td><td><span class="badge badge-pass">選填</span></td><td style="font-family:var(--mono)">JV240001</td></tr>
+                <tr><td>摘要</td><td><strong>前4碼</strong>自動萃取為部門代號</td><td><span class="badge badge-ok">必填</span></td><td style="font-family:var(--mono)">G100 12月銷售</td></tr>
+                <tr><td>借方金額</td><td>依標題名稱辨識</td><td><span class="badge badge-ok">必填</span></td><td style="font-family:var(--mono)">0</td></tr>
+                <tr><td>貸方金額</td><td>依標題名稱辨識</td><td><span class="badge badge-ok">必填</span></td><td style="font-family:var(--mono)">1500000</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div style="margin-top:16px;display:flex;flex-direction:column;gap:8px;">
+            <div style="padding:12px 14px;background:var(--warn-light);border-radius:var(--radius);border:1px solid #f5c89a;font-size:12px;color:var(--warn);">
+              ⚠ 摘要欄前4碼須符合「1碼英文 + 3碼數字」格式（如 G100），系統會自動驗證。
+            </div>
+            <div style="padding:12px 14px;background:var(--info-light);border-radius:var(--radius);border:1px solid #b5c9e8;font-size:12px;color:var(--info);">
+              ℹ 上傳 Excel 後可選擇工作表，系統自動辨識欄位標題（第一列為標題列）。支援多工作表檔案。
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<script>
+// ==================== KNOWLEDGE BASE ====================
+const KB_RAW = `銷貨收入,4100
+減：銷貨退回與折讓,4110
+銷貨收入淨額,pass
+營業收入-物流費,4101001
+營業收入-其他配送,4101007
+營業收入-轉運收入,4101099
+營業收入-勞務收入,4101009
+營業收入-電子商務,4101010
+營業收入-獎勵金, 4101003,4101004,4101006,4101014,4101008
+營業收入合計,pass
+期初商品存貨,1191
+進貨,5100
+營業成本-運費,5101007
+營業成本-薪資,5101088,5101090,5101091,5101092,5101093,5101094,5101095,5101096,5101097
+營業成本-包裝費,5101001
+營業成本-獎勵金,5101011,5101013
+營業成本-其他,5101099
+減：進貨退出與折讓,5110
+減：期末商品存貨,pass
+銷貨成本調整,pass
+營業成本合計,pass
+營業毛利（或毛損),pass
+固定薪資,6010
+加班費,6235
+年終獎金,6558
+伙食費,6180
+勞保費,6100001
+健保費,6100002
+兼職保險、團保費,6100003
+職工福利金,6190
+退職退休金,6560
+訓練費,6220
+人員招募,6080
+員工酬勞及董監酬勞,6013
+租金,6020
+折舊,6150
+各項攤提,6160
+修繕費,6070
+水電費,6090
+清潔費,6470
+保全費,6552
+郵電費,6060
+保險費(產險),6100004
+運費,6050
+旅費,6040
+車輛費,6310
+交際費,6110
+文具印刷費,6030001
+勞務費,6390
+雜費,6551
+捐贈,6120
+稅捐,6130
+權利金,6280
+營業費用總額,pass
+營業利益（或損失),pass
+利息收入,7040
+其他收入,7100,7060
+租金收入,7030
+存貨盤盈(虧),pass
+處分投資利益(損失),pass
+非營業收入總額,pass
+非營業支出, 8010,8070,8030
+非營業收支總額,pass
+稅前損益,pass
+所得稅費用,pass
+本期損益,pass`;
+
+const KB = {};
+KB_RAW.split('\n').forEach(line => {
+  const parts = line.split(',');
+  if (parts.length < 2) return;
+  const name = parts[0].trim();
+  const codes = parts.slice(1).map(c => c.trim()).filter(Boolean);
+  if (codes.length === 1 && codes[0].toLowerCase() === 'pass') {
+    KB[name] = { pass: true, codes: [] };
+  } else {
+    KB[name] = { pass: false, codes };
+  }
+});
+
+document.getElementById('kb-status').textContent = `知識庫：${Object.keys(KB).length} 項科目已載入`;
+document.getElementById('kb-status').style.background = '#e8f0e6';
+document.getElementById('kb-status').style.color = '#2d5a27';
+
+// ==================== NAVIGATION ====================
+function switchPage(name) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById('page-' + name).classList.add('active');
+  const navEl = document.getElementById('nav-' + name);
+  if (navEl) navEl.classList.add('active');
+  if (name === 'kb') renderKB();
+  if (name === 'dashboard') renderDashboard();
+}
+
+function goMode(n) {
+  switchPage('mode' + n);
+}
+
+function switchTab(prefix, tab) {
+  const container = document.getElementById(prefix + '-results');
+  const tabs = container.querySelectorAll('.tab');
+  const panels = container.querySelectorAll('[id^="' + prefix + '-tab-"]');
+  tabs.forEach(t => t.classList.remove('active'));
+  panels.forEach(p => p.classList.add('hidden'));
+  const idx = ['error','summary','detail','recon'].indexOf(tab);
+  tabs[['error','summary'].indexOf(tab) >= 0 ? ['error','summary'].indexOf(tab) : ['detail','recon'].indexOf(tab)].classList.add('active');
+  document.getElementById(prefix + '-tab-' + tab).classList.remove('hidden');
+}
+
+// ==================== PARSING ====================
+function parseCSV(text) {
+  const lines = text.trim().split('\n').filter(l => l.trim());
+  if (!lines.length) return [];
+  const sep = lines[0].includes('\t') ? '\t' : ',';
+  const headers = lines[0].split(sep).map(h => h.trim());
+  return lines.slice(1).map(line => {
+    const vals = line.split(sep).map(v => v.trim().replace(/^"|"$/g, ''));
+    const row = {};
+    headers.forEach((h, i) => row[h] = vals[i] || '');
+    return row;
+  });
+}
+
+function parseAmt(v) {
+  if (!v) return 0;
+  const n = parseFloat(String(v).replace(/,/g, ''));
+  return isNaN(n) ? 0 : n;
+}
+
+// ==================== VALIDATION ====================
+const DEPT_RE = /^[A-Za-z]\d{3}/;
+
+function validateGL(rows) {
+  const errors = [];
+  if (!rows.length) { errors.push({ row: 0, msg: '無資料', type: 'empty' }); return errors; }
+
+  // Check required named columns (借方/貸方/摘要)
+  const cols = Object.keys(rows[0]);
+  ['摘要','借方金額','貸方金額'].forEach(c => {
+    if (!cols.includes(c)) errors.push({ row: 0, msg: `找不到必要欄位：${c}（請確認標題列）`, type: 'missing_col' });
+  });
+  if (errors.length) return errors;
+
+  rows.forEach(r => {
+    const rn = r['_row'] || '?';
+    // 部門代號從摘要前4碼萃取，需符合格式
+    const dept = (r['部門代號'] || '');
+    if (!DEPT_RE.test(dept)) {
+      errors.push({ row: rn, msg: `摘要前4碼無法識別為部門代號：「${r['摘要']}」`, type: 'dept_fmt' });
+    }
+    if (!r['會計項目代號']) {
+      errors.push({ row: rn, msg: `A欄（會計項目代號）為空`, type: 'code' });
+    }
+    if (!r['會計項目名稱']) {
+      errors.push({ row: rn, msg: `B欄（會計項目名稱）為空`, type: 'name' });
+    }
+    const dr = parseAmt(r['借方金額']);
+    const cr = parseAmt(r['貸方金額']);
+    if (isNaN(dr)) errors.push({ row: rn, msg: `借方金額非數字：${r['借方金額']}`, type: 'amount' });
+    if (isNaN(cr)) errors.push({ row: rn, msg: `貸方金額非數字：${r['貸方金額']}`, type: 'amount' });
+  });
+  return errors;
+}
+
+// ==================== CALCULATION ====================
+function calcAmount(code, dr, cr) {
+  const first = String(code)[0];
+  if (first === '4' || first === '7') return cr - dr;
+  return dr - cr;
+}
+
+function groupByDept(rows) {
+  const map = {};
+  rows.forEach(r => {
+    const dept = r['部門代號'];
+    if (!map[dept]) map[dept] = [];
+    map[dept].push(r);
+  });
+  return map;
+}
+
+function calcByCode(rows, code) {
+  let dr = 0, cr = 0;
+  rows.filter(r => r['會計項目代號'] === code).forEach(r => {
+    dr += parseAmt(r['借方金額']);
+    cr += parseAmt(r['貸方金額']);
+  });
+  return calcAmount(code, dr, cr);
+}
+
+function calcByCodes(rows, codes) {
+  return codes.reduce((sum, c) => sum + calcByCode(rows, c), 0);
+}
+
+// ==================== FORMAT ====================
+function fmt(n) {
+  if (n === null || n === undefined) return '—';
+  return new Intl.NumberFormat('zh-TW', { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(Math.round(n));
+}
+function fmtDiff(n) {
+  if (Math.abs(n) < 1) return `<span class="zero">0</span>`;
+  const s = fmt(Math.abs(n));
+  return n > 0 ? `<span class="pos">+${s}</span>` : `<span class="neg">-${s}</span>`;
+}
+
+// ==================== MODE 3 ====================
+function runMode3() {
+  const rows = glData['m3'];
+  if (!rows || !rows.length) {
+    setStatus('m3-status','error','請先上傳損益分類帳 Excel 檔案');
+    return;
+  }
+
+  document.getElementById('m3-results').classList.remove('hidden');
+  const errDiv = document.getElementById('m3-tab-error');
+  const sumDiv = document.getElementById('m3-tab-summary');
+
+  // 逐列驗證，收集各列的錯誤，同時分離「乾淨列」與「異常列」
+  const errorsByRow = {};   // row._row -> [msg, ...]
+  rows.forEach(r => {
+    const rn = r['_row'] || '?';
+    const errs = [];
+    if (!DEPT_RE.test(r['部門代號'] || ''))
+      errs.push(`摘要前4碼無法識別為部門代號：「${r['摘要']}」`);
+    if (!r['會計項目代號'])
+      errs.push('A欄（會計項目代號）為空');
+    if (!r['會計項目名稱'])
+      errs.push('B欄（會計項目名稱）為空');
+    if (isNaN(parseFloat(String(r['借方金額']).replace(/,/g,''))))
+      errs.push(`借方金額非數字：${r['借方金額']}`);
+    if (isNaN(parseFloat(String(r['貸方金額']).replace(/,/g,''))))
+      errs.push(`貸方金額非數字：${r['貸方金額']}`);
+    if (errs.length) errorsByRow[rn] = errs;
+  });
+
+  const errorRowNums = new Set(Object.keys(errorsByRow).map(String));
+  const cleanRows  = rows.filter(r => !errorRowNums.has(String(r['_row'] || '?')));
+  const errorCount = Object.keys(errorsByRow).length;
+
+  // 渲染異常報告 Tab
+  if (errorCount > 0) {
+    let eHtml = `<div class="status-bar status-warn" style="margin-bottom:12px;">
+      ⚠ 發現 ${errorCount} 筆異常列（已排除），以下列不計入彙總。
+    </div>`;
+    eHtml += `<div class="table-wrap"><table>
+      <thead><tr><th>Excel 行號</th><th>會計項目代號</th><th>會計項目名稱</th><th>摘要</th><th>異常說明</th></tr></thead><tbody>`;
+    Object.entries(errorsByRow).forEach(([rn, msgs]) => {
+      const r = rows.find(x => String(x['_row']) === String(rn)) || {};
+      eHtml += `<tr class="error-row">
+        <td style="font-family:var(--mono)">${rn}</td>
+        <td style="font-family:var(--mono)">${r['會計項目代號'] || '—'}</td>
+        <td>${r['會計項目名稱'] || '—'}</td>
+        <td style="font-size:11px;color:var(--text-muted)">${r['摘要'] || '—'}</td>
+        <td>${msgs.join('；')}</td>
+      </tr>`;
+    });
+    eHtml += '</tbody></table></div>';
+    errDiv.innerHTML = eHtml;
+  } else {
+    errDiv.innerHTML = '<div class="status-bar status-ok">✓ 無異常資料，全部列均通過驗證。</div>';
+  }
+
+  if (!cleanRows.length) {
+    setStatus('m3-status','error','⚠ 所有資料列均為異常，無法產出彙總表');
+    sumDiv.innerHTML = '<div class="status-bar status-error">⚠ 無有效資料可彙總，請修正 Excel 後重新上傳。</div>';
+    switchTab('m3','error');
+    return;
+  }
+
+  setStatus('m3-status', errorCount > 0 ? 'warn' : 'ok',
+    errorCount > 0
+      ? `⚠ 排除 ${errorCount} 筆異常列，以 ${cleanRows.length} 筆有效資料產出彙總`
+      : `✓ 格式驗證通過，共 ${cleanRows.length} 筆資料，正在彙總…`
+  );
+
+  // Build summary from clean rows only
+  const depts = groupByDept(cleanRows);
+  const codeMap = {};
+  cleanRows.forEach(r => {
+    const k = r['會計項目代號'];
+    if (!codeMap[k]) codeMap[k] = r['會計項目名稱'];
+  });
+
+  let html = `<div style="margin-bottom:14px;" class="btn-row">
+    <button class="copy-btn" onclick="copyTable('m3-sum-tbl')">複製表格</button>
+    <button class="btn btn-primary btn-sm" onclick="exportDeptZip()" id="m3-zip-btn">⬇ 下載各部門 Excel（ZIP）</button>
+  </div>`;
+  html += `<div class="table-wrap"><table id="m3-sum-tbl">
+    <thead><tr>
+      <th>會計科目代號</th><th>會計科目名稱</th><th>部門代號</th>
+      <th class="num">借方加總</th><th class="num">貸方加總</th><th class="num">金額總計</th>
+    </tr></thead><tbody>`;
+
+  const summaryRows = [];
+  const deptSummaryMap = {};   // dept -> [{ code, name, dr, cr, amt }, ...]
+
+  Object.keys(depts).sort().forEach(dept => {
+    const drows = depts[dept];
+    const codeGroup = {};
+    drows.forEach(r => {
+      const k = r['會計項目代號'];
+      if (!codeGroup[k]) codeGroup[k] = { name: r['會計項目名稱'], dr: 0, cr: 0 };
+      codeGroup[k].dr += parseAmt(r['借方金額']);
+      codeGroup[k].cr += parseAmt(r['貸方金額']);
+    });
+    deptSummaryMap[dept] = [];
+    Object.keys(codeGroup).sort().forEach(code => {
+      const { name, dr, cr } = codeGroup[code];
+      const amt = calcAmount(code, dr, cr);
+      summaryRows.push({ code, name, dept, dr, cr, amt });
+      deptSummaryMap[dept].push({ code, name, dr, cr, amt });
+      html += `<tr>
+        <td style="font-family:var(--mono)">${code}</td>
+        <td>${name}</td>
+        <td><span class="badge badge-dept">${dept}</span></td>
+        <td class="num">${fmt(dr)}</td>
+        <td class="num">${fmt(cr)}</td>
+        <td class="num" style="font-weight:600">${fmt(amt)}</td>
+      </tr>`;
+    });
+  });
+
+  // 儲存供 export 使用
+  window._m3DeptSummary = deptSummaryMap;
+
+  html += '</tbody></table></div>';
+
+  // Summary cards
+  const totalDr = summaryRows.reduce((s, r) => s + r.dr, 0);
+  const totalCr = summaryRows.reduce((s, r) => s + r.cr, 0);
+  const deptCount = Object.keys(depts).length;
+  html = `<div class="summary-grid" style="margin-bottom:16px;">
+    <div class="summary-card"><div class="summary-label">部門數</div><div class="summary-value ok">${deptCount}</div></div>
+    <div class="summary-card"><div class="summary-label">科目筆數</div><div class="summary-value">${summaryRows.length}</div></div>
+    <div class="summary-card"><div class="summary-label">借方合計</div><div class="summary-value">${fmt(totalDr)}</div></div>
+    <div class="summary-card"><div class="summary-label">貸方合計</div><div class="summary-value">${fmt(totalCr)}</div></div>
+  </div>` + html;
+
+  sumDiv.innerHTML = html;
+  // 有異常時留在異常 Tab，讓使用者先看到排除明細；無異常直接顯示彙總
+  if (errorCount > 0) {
+    setStatus('m3-status', 'warn',
+      `⚠ 已排除 ${errorCount} 筆異常，以 ${cleanRows.length} 筆有效資料完成彙總（共 ${deptCount} 部門）`);
+    switchTab('m3', 'error');
+  } else {
+    setStatus('m3-status', 'ok',
+      `✓ 已完成彙總，共 ${deptCount} 個部門、${summaryRows.length} 筆明細`);
+    switchTab('m3', 'summary');
+  }
+  // 更新儀表板資料
+  renderDashboard();
+}
+
+
+// ==================== ERROR TABLE ====================
+function renderErrorTable(errors) {
+  let html = `<div class="status-bar status-error" style="margin-bottom:12px;">⚠ 發現 ${errors.length} 筆異常，已停止處理，請修正後重新執行。</div>`;
+  html += `<div class="table-wrap"><table>
+    <thead><tr><th>行號</th><th>異常類型</th><th>說明</th></tr></thead><tbody>`;
+  errors.forEach(e => {
+    html += `<tr class="error-row"><td style="font-family:var(--mono)">${e.row || '—'}</td>
+      <td>${e.type}</td><td>${e.msg}</td></tr>`;
+  });
+  return html + '</tbody></table></div>';
+}
+
+// ==================== KB RENDER ====================
+function renderKB() {
+  const q = (document.getElementById('kb-search').value || '').toLowerCase();
+  const items = Object.entries(KB).filter(([k]) => !q || k.toLowerCase().includes(q));
+  let html = `<div class="table-wrap"><table>
+    <thead><tr><th>會計科目名稱</th><th>對照科目代號</th><th>備註</th></tr></thead><tbody>`;
+  items.forEach(([name, entry]) => {
+    html += `<tr>
+      <td>${name}</td>
+      <td style="font-family:var(--mono);font-size:11px">${entry.pass ? '—' : entry.codes.join(', ')}</td>
+      <td><span class="badge ${entry.pass ? 'badge-pass' : 'badge-ok'}">${entry.pass ? 'pass' : entry.codes.length + ' 代號'}</span></td>
+    </tr>`;
+  });
+  html += '</tbody></table></div>';
+  document.getElementById('kb-table').innerHTML = html;
+}
+
+// ==================== HELPERS ====================
+function setStatus(id, type, msg) {
+  const el = document.getElementById(id);
+  el.className = 'status-bar status-' + type;
+  el.textContent = msg;
+}
+
+function copyTable(id) {
+  const tbl = document.getElementById(id);
+  if (!tbl) return;
+  const rows = tbl.querySelectorAll('tr');
+  const lines = Array.from(rows).map(r =>
+    Array.from(r.querySelectorAll('th,td')).map(c => c.textContent.trim()).join('\t')
+  );
+  navigator.clipboard.writeText(lines.join('\n')).then(() => alert('已複製到剪貼板'));
+}
+
+// ==================== SAMPLE DATA ====================
+function clearMode3() {
+  glData['m3'] = null;
+  document.getElementById('m3-file-info').classList.add('hidden');
+  document.getElementById('m3-file-info').innerHTML = '';
+  document.getElementById('m3-sheet-selector').classList.add('hidden');
+  document.getElementById('m3-drop').classList.remove('loaded');
+  document.getElementById('m3-results').classList.add('hidden');
+  setStatus('m3-status','idle','等待上傳 Excel 檔案…');
+}
+
+// ==================== EXCEL HANDLING ====================
+const glData = { m3: null };
+const wbStore = { m3: null };
+
+function handleDragOver(e, dropId) {
+  e.preventDefault();
+  document.getElementById(dropId).classList.add('dragover');
+}
+function handleDragLeave(e, dropId) {
+  document.getElementById(dropId).classList.remove('dragover');
+}
+function handleDrop(e, prefix) {
+  e.preventDefault();
+  document.getElementById(prefix + '-drop').classList.remove('dragover');
+  const file = e.dataTransfer.files[0];
+  if (file) processExcelFile(file, prefix);
+}
+function handleFile(e, prefix) {
+  const file = e.target.files[0];
+  if (file) processExcelFile(file, prefix);
+}
+
+function processExcelFile(file, prefix) {
+  if (!file.name.match(/\.(xlsx|xls|ods)$/i)) {
+    setStatus(prefix + '-status', 'error', '⚠ 請上傳 .xlsx 或 .xls 格式檔案');
+    return;
+  }
+  setStatus(prefix + '-status', 'info', '正在讀取 Excel 檔案…');
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      const data = new Uint8Array(e.target.result);
+      const wb = XLSX.read(data, { type: 'array', cellDates: true });
+      wbStore[prefix] = { wb, fileName: file.name };
+      const sheets = wb.SheetNames;
+
+      // Show sheet selector
+      const selectorEl = document.getElementById(prefix + '-sheet-selector');
+      const btnsEl = document.getElementById(prefix + '-sheet-btns');
+      selectorEl.classList.remove('hidden');
+      btnsEl.innerHTML = '';
+      sheets.forEach((name, i) => {
+        const btn = document.createElement('button');
+        btn.className = 'sheet-btn' + (i === 0 ? ' active' : '');
+        btn.textContent = name;
+        btn.onclick = () => {
+          btnsEl.querySelectorAll('.sheet-btn').forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+          loadSheet(prefix, name, file.name);
+        };
+        btnsEl.appendChild(btn);
+      });
+
+      // Auto-load first sheet
+      loadSheet(prefix, sheets[0], file.name);
+      document.getElementById(prefix + '-drop').classList.add('loaded');
+    } catch(err) {
+      setStatus(prefix + '-status', 'error', '⚠ 讀取失敗：' + err.message);
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function loadSheet(prefix, sheetName, fileName) {
+  const { wb } = wbStore[prefix];
+  const ws = wb.Sheets[sheetName];
+
+  // Read as array-of-arrays to use positional columns (A=col0, B=col1)
+  const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: false });
+  if (aoa.length < 2) {
+    setStatus(prefix + '-status', 'error', '⚠ 工作表資料不足，請確認格式');
+    return;
+  }
+
+  // First row = headers; find required named columns by header text
+  const headerRow = aoa[0].map(h => String(h ?? '').trim());
+  const colIdx = name => headerRow.findIndex(h => h === name);
+
+  // Named column indices (fallback -1 = not found)
+  const iDate    = colIdx('日期');
+  const iVoucher = colIdx('傳票號碼');
+  const iMemo    = colIdx('摘要');
+  const iDr      = colIdx('借方金額');
+  const iCr      = colIdx('貸方金額');
+
+  // A欄(index 0) = 會計項目代號, B欄(index 1) = 會計項目名稱 (固定位置，不依標題)
+  const iCode = 0;
+  const iName = 1;
+
+  const rows = [];
+  aoa.slice(1).forEach((row, i) => {
+    // Skip fully empty rows
+    if (!row.some(c => String(c ?? '').trim() !== '')) return;
+
+    const memo   = String(row[iMemo]   ?? '').trim();
+    const code   = String(row[iCode]   ?? '').trim();
+    const name   = String(row[iName]   ?? '').trim();
+
+    // 部門代號 = 摘要前4碼
+    const dept = memo.substring(0, 4);
+
+    rows.push({
+      '日期':           iDate    >= 0 ? String(row[iDate]    ?? '').trim() : '',
+      '傳票號碼':       iVoucher >= 0 ? String(row[iVoucher] ?? '').trim() : '',
+      '部門代號':       dept,
+      '會計項目代號':   code,
+      '會計項目名稱':   name,
+      '摘要':           memo,
+      '借方金額':       iDr >= 0 ? String(row[iDr] ?? '').trim() : '0',
+      '貸方金額':       iCr >= 0 ? String(row[iCr] ?? '').trim() : '0',
+      '_row':           i + 2   // Excel row number for error reporting
+    });
+  });
+
+  glData[prefix] = rows;
+
+  const infoEl = document.getElementById(prefix + '-file-info');
+  infoEl.classList.remove('hidden');
+  infoEl.innerHTML = `<div class="xl-file-info">
+    <span style="font-size:18px;">📄</span>
+    <span class="xl-file-name">${fileName}</span>
+    <span class="xl-file-rows">${rows.length} 筆資料 ／ 工作表：${sheetName}</span>
+    <button class="xl-remove" onclick="clearMode${prefix === 'm3' ? '3' : '7'}()">移除</button>
+  </div>`;
+
+  setStatus(prefix + '-status', 'ok', `✓ 已載入「${sheetName}」，共 ${rows.length} 筆資料，可執行作業`);
+}
+
+// ==================== EXPORT DEPT ZIP ====================
+
+// ── 樣式輔助 ──────────────────────────────────────────────
+function cs(opts) {
+  // opts: { bold, sz, align, numFmt, bg, borderL, borderR, borderT, borderB }
+  const s = {};
+  if (opts.bold || opts.sz) s.font = { name: 'Arial', sz: opts.sz || 12, bold: !!opts.bold };
+  else s.font = { name: 'Arial', sz: 12 };
+  if (opts.bg) s.fill = { patternType: 'solid', fgColor: { rgb: opts.bg } };
+  if (opts.align) s.alignment = { horizontal: opts.align, vertical: 'center', wrapText: true };
+  if (opts.numFmt) s.numFmt = opts.numFmt;
+  const mkSide = (style) => style ? { style } : { style: 'none' };
+  s.border = {
+    left:   mkSide(opts.borderL || 'thin'),
+    right:  mkSide(opts.borderR || 'thin'),
+    top:    mkSide(opts.borderT || 'thin'),
+    bottom: mkSide(opts.borderB || 'thin'),
+  };
+  return s;
+}
+function setCell(ws, addr, v, style) {
+  const cell = { v, t: typeof v === 'number' ? 'n' : 's' };
+  if (style) cell.s = style;
+  if (style && style.numFmt) cell.z = style.numFmt;
+  ws[addr] = cell;
+}
+function enc(r, c) { return XLSX.utils.encode_cell({ r, c }); }
+
+// 數字格式
+const FMT_NUM  = '#,##0_ ;[Red]\\-#,##0\\ ';
+const FMT_PCT  = '0.0%';
+
+// 損益表科目定義 ─────────────────────────────────────────
+// [row(1-based), colA, colB, colC, kbName, isSubtotal]
+// colA/B/C: 科目標籤放在哪欄（A=0,B=1,C=2）
+// kbName: 對應知識庫科目名稱（用來查計算金額），null=不填金額（純小計/合計）
+const PL_ROWS = [
+  // 營業收入
+  [7,  '營業收入', '銷貨收入',           null,  '銷貨收入',            false],
+  [8,  null,       '減：銷貨退回與折讓',  null,  '減：銷貨退回與折讓',  false],
+  [9,  null,       '銷貨收入淨額',        null,  '銷貨收入淨額',        true ],
+  [10, null,       '營業收入-物流費',     null,  '營業收入-物流費',     false],
+  [11, null,       '營業收入-其他配送',   null,  '營業收入-其他配送',   false],
+  [12, null,       '營業收入-轉運收入',   null,  '營業收入-轉運收入',   false],
+  [13, null,       '營業收入-勞務收入',   null,  '營業收入-勞務收入',   false],
+  [14, null,       '營業收入-電子商務',   null,  '營業收入-電子商務',   false],
+  [15, null,       '營業收入-獎勵金',     null,  '營業收入-獎勵金',     false],
+  [16, null,       '營業收入合計',        null,  '營業收入合計',        true ],
+  // 營業成本
+  [17, '營業成本', '期初商品存貨',        null,  '期初商品存貨',        false],
+  [18, null,       '進貨',                null,  '進貨',                false],
+  [19, null,       '營業成本-運費',       null,  '營業成本-運費',       false],
+  [20, null,       '營業成本-薪資',       null,  '營業成本-薪資',       false],
+  [21, null,       '營業成本-包裝費',     null,  '營業成本-包裝費',     false],
+  [22, null,       '營業成本-獎勵金',     null,  '營業成本-獎勵金',     false],
+  [23, null,       '營業成本-其他',       null,  '營業成本-其他',       false],
+  [24, null,       '減：進貨退出與折讓',  null,  '減：進貨退出與折讓',  false],
+  [25, null,       '減：期末商品存貨',    null,  '減：期末商品存貨',    true ],
+  [26, null,       '銷貨成本調整',        null,  '銷貨成本調整',        false],
+  [27, null,       '營業成本合計',        null,  '營業成本合計',        true ],
+  // 營業毛利
+  [28, '營業毛利（或毛損)', null,         null,  '營業毛利（或毛損)',   true ],
+  // 營業費用 - 人事
+  [29, '營業費用', '人事費用',            '固定薪資',    '固定薪資',    false],
+  [30, null,       null,                  '加班費',      '加班費',      false],
+  [31, null,       null,                  '年終獎金',    '年終獎金',    false],
+  [32, null,       null,                  '伙食費',      '伙食費',      false],
+  [33, null,       null,                  '勞保費',      '勞保費',      false],
+  [34, null,       null,                  '健保費',      '健保費',      false],
+  [35, null,       null,                  '兼職保險、團保費', '兼職保險、團保費', false],
+  [36, null,       null,                  '職工福利金',  '職工福利金',  false],
+  [37, null,       null,                  '退職退休金',  '退職退休金',  false],
+  [38, null,       null,                  '訓練費',      '訓練費',      false],
+  [39, null,       null,                  '人員招募',    '人員招募',    false],
+  [40, null,       null,                  '員工酬勞及董監酬勞','員工酬勞及董監酬勞',false],
+  // 設施費用
+  [41, null,       '設施費用',            '租金',        '租金',        false],
+  [42, null,       null,                  '折舊',        '折舊',        false],
+  [43, null,       null,                  '各項攤提',    '各項攤提',    false],
+  [44, null,       null,                  '修繕費',      '修繕費',      false],
+  // 一般費用
+  [45, null,       '一般費用',            '水電費',      '水電費',      false],
+  [46, null,       null,                  '清潔費',      '清潔費',      false],
+  [47, null,       null,                  '保全費',      '保全費',      false],
+  [48, null,       null,                  '郵電費',      '郵電費',      false],
+  [49, null,       null,                  '保險費(產險)', '保險費(產險)',false],
+  [50, null,       null,                  '運費',        '運費',        false],
+  [51, null,       null,                  '旅費',        '旅費',        false],
+  [52, null,       null,                  '車輛費',      '車輛費',      false],
+  // 其他費用
+  [53, null,       '其他費用',            '交際費',      '交際費',      false],
+  [54, null,       null,                  '文具印刷費',  '文具印刷費',  false],
+  [55, null,       null,                  '勞務費',      '勞務費',      false],
+  [56, null,       null,                  '雜費',        '雜費',        false],
+  [57, null,       null,                  '捐贈',        '捐贈',        false],
+  [58, null,       null,                  '稅捐',        '稅捐',        false],
+  [59, null,       null,                  '呆帳損失',    '呆帳損失',    false],
+  [60, null,       '營業費用總額',        null,          '營業費用總額', true],
+  // 營業利益
+  [61, '營業利益（或損失)', null,         null,          '營業利益（或損失)', true],
+  // 非營業
+  [62, '非營業收支', '利息收入',          null,          '利息收入',    false],
+  [63, null,       '其他收入',            null,          '其他收入',    false],
+  [64, null,       '租金收入',            null,          '租金收入',    false],
+  [65, null,       '存貨盤盈(虧)',         null,          '存貨盤盈(虧)', false],
+  [66, null,       '處分投資利益(損失)',   null,          '處分投資利益(損失)', false],
+  [67, null,       '非營業收入總額',      null,          '非營業收入總額', true],
+  [68, null,       '非營業支出',          null,          '非營業支出',  false],
+  [69, null,       '非營業收支總額',      null,          '非營業收支總額', true],
+  [70, '稅前損益',  null,                 null,          '稅前損益',    true ],
+  [71, '所得稅費用',null,                 null,          '所得稅費用',  false],
+  [72, '本期損益',  null,                 null,          '本期損益',    true ],
+];
+
+// 知識庫：科目名稱 → 分類帳計算金額（從 KB 查對照代號後計算）
+function getPlAmt(kbName, deptRows) {
+  if (!kbName) return 0;
+  const entry = KB[kbName];
+  if (!entry || entry.pass) return 0;
+  return calcByCodes(deptRows, entry.codes);
+}
+
+// 建立損益表工作表
+function buildPLSheet(dept, deptRows, companyName, periodTitle, periodRange) {
+  const ws = {};
+  const merges = [];
+  const R = (r) => r - 1; // 1-based → 0-based
+
+  // ── 欄寬 ──────────────────────────────────────
+  ws['!cols'] = [
+    { wch: 3.6 },   // A
+    { wch: 12 },    // B
+    { wch: 22 },    // C
+    { wch: 15.6 },  // D
+    { wch: 9.6 },   // E
+    { wch: 15.6 },  // F
+    { wch: 9.6 },   // G
+    { wch: 75.6 },  // H
+  ];
+
+  // ── 標題列 ──────────────────────────────────
+  const titleStyle = { sz: 24, align: 'center' };
+  const sub1Style  = { sz: 18, align: 'center' };
+  const sub2Style  = { sz: 12, align: 'center' };
+
+  setCell(ws, 'A1', companyName, cs(titleStyle));
+  merges.push({ s:{r:0,c:0}, e:{r:0,c:7} });
+
+  setCell(ws, 'A2', periodTitle, cs(sub1Style));
+  merges.push({ s:{r:1,c:0}, e:{r:1,c:7} });
+
+  setCell(ws, 'A3', periodRange, cs(sub2Style));
+  merges.push({ s:{r:2,c:0}, e:{r:2,c:7} });
+
+  setCell(ws, 'A4', `單位：${dept}`, cs({ sz: 12 }));
+  setCell(ws, 'H4', '單位：元', cs({ sz: 12, align: 'right' }));
+
+  // ── 表頭 (row 5-6) ──────────────────────────
+  const hdrS = cs({ sz: 12, align: 'center', borderL:'medium', borderR:'thin', borderT:'medium', borderB:'thin' });
+  const hdrM = cs({ sz: 12, align: 'center', borderL:'thin',   borderR:'thin', borderT:'medium', borderB:'thin' });
+  const hdrR = cs({ sz: 12, align: 'center', borderL:'thin',   borderR:'medium',borderT:'medium',borderB:'thin' });
+  const hdr2 = cs({ sz: 12, align: 'center', borderL:'thin',   borderR:'thin', borderT:'thin',   borderB:'thin' });
+
+  setCell(ws, 'A5', '會計科目', hdrS); merges.push({s:{r:4,c:0},e:{r:5,c:2}});
+  setCell(ws, 'D5', '01月預算', hdrM); merges.push({s:{r:4,c:3},e:{r:4,c:4}});
+  setCell(ws, 'F5', '01月實績', hdrM); merges.push({s:{r:4,c:5},e:{r:4,c:6}});
+  setCell(ws, 'H5', '內容說明', hdrR); merges.push({s:{r:4,c:7},e:{r:5,c:7}});
+  setCell(ws, 'D6', '金額',     hdr2);
+  setCell(ws, 'E6', '構成比',   hdr2);
+  setCell(ws, 'F6', '金額',     hdr2);
+  setCell(ws, 'G6', '預算比',   hdr2);
+
+  // ── 科目資料列 ──────────────────────────────
+  PL_ROWS.forEach(([rowNum, labelA, labelB, labelC, kbName, isSubtotal]) => {
+    const r = R(rowNum);
+    const amt = getPlAmt(kbName, deptRows);
+
+    // A欄：大分類標籤（只有有值時）
+    const leftBorder = labelA ? 'medium' : 'thin';
+    const baseS = cs({ sz:12, borderL: leftBorder, borderR:'thin', borderT:'thin', borderB:'thin' });
+    const numS  = cs({ sz:12, numFmt: FMT_NUM, borderL:'thin', borderR:'thin', borderT:'thin', borderB:'thin' });
+    const pctS  = cs({ sz:12, numFmt: FMT_PCT, borderL:'thin', borderR:'thin', borderT:'thin', borderB:'thin' });
+    const noteS = cs({ sz:10, borderL:'thin', borderR:'medium',borderT:'thin', borderB:'thin' });
+
+    if (labelA !== null) {
+      setCell(ws, enc(r,0), labelA, baseS);
+    } else {
+      ws[enc(r,0)] = { v:'', t:'s', s: baseS };
+    }
+
+    // B欄
+    if (labelB !== null) {
+      setCell(ws, enc(r,1), labelB, cs({ sz:12, borderL:'thin', borderR:'thin', borderT:'thin', borderB:'thin' }));
+      // 如果 B 有值且 C 沒值，合併 B:C
+      if (labelC === null) merges.push({ s:{r,c:1}, e:{r,c:2} });
+    } else {
+      ws[enc(r,1)] = { v:'', t:'s', s: cs({ sz:12, borderL:'thin', borderR:'thin', borderT:'thin', borderB:'thin' }) };
+    }
+
+    // C欄
+    if (labelC !== null) {
+      setCell(ws, enc(r,2), labelC, cs({ sz:12, borderL:'thin', borderR:'thin', borderT:'thin', borderB:'thin' }));
+    } else {
+      ws[enc(r,2)] = { v:'', t:'s', s: cs({ sz:12, borderL:'thin', borderR:'thin', borderT:'thin', borderB:'thin' }) };
+    }
+
+    // D欄（預算金額 - 留空，填0）
+    setCell(ws, enc(r,3), 0, numS);
+    // E欄（構成比 - 留空）
+    setCell(ws, enc(r,4), 0, pctS);
+    // F欄（實績金額）
+    setCell(ws, enc(r,5), amt, numS);
+    // G欄（預算比 - 留空）
+    setCell(ws, enc(r,6), 0, pctS);
+    // H欄（備註）
+    setCell(ws, enc(r,7), ' ', noteS);
+  });
+
+  // ── 簽核列 (row 73-76) ───────────────────────
+  const signS = cs({ sz:12 });
+  [['B73','董'],['C73','總'],['E73','副'],['F73','                  協'],['H73','    覆                                製'],
+   ['B74','事'],['C74','經'],['E74','總'],['F74','                  理'],['H74','    核                                表'],
+   ['B75','長'],['C75','理'],['E75','經'],
+   ['E76','理']].forEach(([addr, val]) => setCell(ws, addr, val, signS));
+
+  // ── 設定 ref & merges ───────────────────────
+  ws['!ref'] = XLSX.utils.encode_range({ s:{r:0,c:0}, e:{r:75,c:7} });
+  ws['!merges'] = merges;
+  return ws;
+}
+
+// 建立分類帳工作表
+function buildGLSheet(deptRows) {
+  const ws = {};
+  const hdrS = cs({ bold:true, sz:12, align:'center',
+    borderL:'thin', borderR:'thin', borderT:'thin', borderB:'thin' });
+  const dataS = cs({ sz:12, borderL:'thin', borderR:'thin', borderT:'thin', borderB:'thin' });
+  const subtS = cs({ sz:12, bg:'FFFFFF00',
+    borderL:'thin', borderR:'thin', borderT:'thin', borderB:'thin' });
+
+  // 標題列
+  ['日期','傳票號碼','會計項目','項目名稱','客供商代號','摘要','借方金額','貸方金額']
+    .forEach((h, c) => setCell(ws, enc(0, c), h, hdrS));
+
+  let rowIdx = 1;
+
+  // 依會計項目分組，每組資料列 + 月計列
+  const codeOrder = [...new Set(deptRows.map(r => r['會計項目代號']))];
+  codeOrder.forEach(code => {
+    const codeRows = deptRows.filter(r => r['會計項目代號'] === code);
+    let sumDr = 0, sumCr = 0;
+    codeRows.forEach(r => {
+      const dr = parseAmt(r['借方金額']);
+      const cr = parseAmt(r['貸方金額']);
+      sumDr += dr; sumCr += cr;
+      [r['日期'], r['傳票號碼'], r['會計項目代號'], r['會計項目名稱'],
+       '', r['摘要'], dr, cr]
+        .forEach((v, c) => {
+          const t = typeof v === 'number' ? 'n' : 's';
+          const s = c >= 6 ? cs({ sz:12, numFmt: FMT_NUM, borderL:'thin', borderR:'thin', borderT:'thin', borderB:'thin' }) : dataS;
+          ws[enc(rowIdx, c)] = { v: v ?? '', t, s };
+        });
+      rowIdx++;
+    });
+    // 月計列
+    setCell(ws, enc(rowIdx, 0), '月計：', subtS);
+    for (let c = 1; c <= 5; c++) ws[enc(rowIdx, c)] = { v:'', t:'s', s: subtS };
+    setCell(ws, enc(rowIdx, 6), sumDr, cs({ sz:12, numFmt:FMT_NUM, bg:'FFFFFF00', borderL:'thin', borderR:'thin', borderT:'thin', borderB:'thin' }));
+    setCell(ws, enc(rowIdx, 7), sumCr, cs({ sz:12, numFmt:FMT_NUM, bg:'FFFFFF00', borderL:'thin', borderR:'thin', borderT:'thin', borderB:'thin' }));
+    rowIdx++;
+  });
+
+  ws['!ref'] = XLSX.utils.encode_range({ s:{r:0,c:0}, e:{r:rowIdx,c:7} });
+  ws['!cols'] = [
+    {wch:12},{wch:14},{wch:10},{wch:16},{wch:12},{wch:40},{wch:14},{wch:14}
+  ];
+  return ws;
+}
+
+async function exportDeptZip() {
+  const map = window._m3DeptSummary;
+  const rawRows = glData['m3'];
+  if (!map || !Object.keys(map).length) {
+    alert('尚無彙總資料，請先執行結帳作業');
+    return;
+  }
+
+  const btn = document.getElementById('m3-zip-btn');
+  btn.disabled = true;
+  btn.textContent = '⏳ 產生中…';
+
+  const zip = new JSZip();
+  const today = new Date();
+  const yy  = today.getFullYear();
+  const mm  = String(today.getMonth() + 1).padStart(2, '0');
+  const companyName = '日翊文化行銷股份有限公司';
+  const periodTitle = `${yy}年${mm}月損益表`;
+  const periodRange = `中華民國${yy}年${mm}月01日至${yy}年${mm}月${new Date(yy, today.getMonth()+1, 0).getDate()}日`;
+
+  const depts = groupByDept(rawRows || []);
+
+  Object.entries(map).forEach(([dept, summaryItems]) => {
+    const deptRows = depts[dept] || [];
+    const wb = XLSX.utils.book_new();
+
+    // 工作表1：損益表
+    const wsGL = buildPLSheet(dept, deptRows, companyName, periodTitle, periodRange);
+    XLSX.utils.book_append_sheet(wb, wsGL, '損益表');
+
+    // 工作表2：分類帳
+    const wsLedger = buildGLSheet(deptRows);
+    XLSX.utils.book_append_sheet(wb, wsLedger, '分類帳');
+
+    const wbBin = XLSX.write(wb, { bookType: 'xlsx', type: 'array', cellStyles: true });
+    zip.file(`${dept}_損益明細.xlsx`, wbBin);
+  });
+
+  const blob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  const dateStr = today.toISOString().slice(0,10).replace(/-/g,'');
+  a.href     = url;
+  a.download = `部門損益明細_${dateStr}.zip`;
+  a.click();
+  URL.revokeObjectURL(url);
+
+  btn.disabled = false;
+  btn.textContent = '⬇ 下載各部門 Excel（ZIP）';
+  setStatus('m3-status', 'ok',
+    `✓ 已下載 ZIP，含 ${Object.keys(map).length} 個部門（損益表＋分類帳）：${Object.keys(map).join('、')}`);
+}
+
+// ==================== DASHBOARD ====================
+let _charts = {};
+let _sortDir = 'asc';   // 'asc' | 'desc'
+
+function destroyChart(id) {
+  if (_charts[id]) { _charts[id].destroy(); delete _charts[id]; }
+}
+
+const CHART_COLORS = [
+  '#2d5a27','#4a8a42','#6db863','#9ed494','#c5e8bf',
+  '#1a3d6e','#2460aa','#4a80c8','#7aaad8','#b0cce8',
+  '#8a4a10','#c4711e','#e09040','#f0b870','#f8d8a8',
+  '#6b2060','#a0358e','#c860b8','#dfa0d0','#f2d0e8',
+];
+
+// ── 日期輔助 ─────────────────────────────────────────────
+function initDatePicker() {
+  const rows = glData['m3'] || [];
+  // 收集所有年份（從「日期」欄位）
+  const years = new Set();
+  rows.forEach(r => {
+    const d = String(r['日期'] || '');
+    const m = d.match(/(\d{4})/);
+    if (m) years.add(m[1]);
+  });
+  const yearSel = document.getElementById('dash-year');
+  const curYear = yearSel.value;
+  yearSel.innerHTML = '<option value="">全年</option>';
+  [...years].sort().forEach(y => {
+    const opt = document.createElement('option');
+    opt.value = y; opt.textContent = y + ' 年';
+    if (y === curYear) opt.selected = true;
+    yearSel.appendChild(opt);
+  });
+  // 自動選最新年份
+  if (!curYear && years.size) {
+    yearSel.value = [...years].sort().pop();
+  }
+}
+
+function getDateFilter() {
+  return {
+    year:  document.getElementById('dash-year')?.value  || '',
+    month: document.getElementById('dash-month')?.value || '',
+  };
+}
+
+function filterRowsByDate(rows) {
+  const { year, month } = getDateFilter();
+  if (!year && !month) return rows;
+  return rows.filter(r => {
+    const d = String(r['日期'] || '');
+    if (year  && !d.includes(year))  return false;
+    // month: '01'~'12'; date formats may be YYYY-MM-DD or YYY-MM-DD (民國)
+    if (month) {
+      const parts = d.split(/[-\/]/);
+      const mm = (parts[1] || '').padStart(2, '0');
+      if (mm !== month) return false;
+    }
+    return true;
+  });
+}
+
+function onDateChange() {
+  // 重新計算並渲染整個儀表板（帶日期篩選）
+  renderDashboard();
+}
+
+// ── 排序輔助 ─────────────────────────────────────────────
+function toggleSortDir() {
+  _sortDir = _sortDir === 'asc' ? 'desc' : 'asc';
+  document.getElementById('dash-sort-dir-btn').textContent = _sortDir === 'asc' ? '↑' : '↓';
+  renderDeptDetail();
+}
+
+function sortDetailRows(rows) {
+  const col = document.getElementById('dash-sort-col')?.value || 'dept';
+  const dir = _sortDir === 'asc' ? 1 : -1;
+  return [...rows].sort((a, b) => {
+    let va, vb;
+    switch (col) {
+      case 'dept': va = a.dept; vb = b.dept; break;
+      case 'code': va = a.code; vb = b.code; break;
+      case 'name': va = a.name; vb = b.name; break;
+      case 'dr':   va = a.dr;   vb = b.dr;   break;
+      case 'cr':   va = a.cr;   vb = b.cr;   break;
+      case 'amt':  va = Math.abs(a.amt); vb = Math.abs(b.amt); break;
+      default:     va = a.dept; vb = b.dept;
+    }
+    if (typeof va === 'number') return (va - vb) * dir;
+    return String(va).localeCompare(String(vb), 'zh-TW') * dir;
+  });
+}
+
+// ── 主渲染 ───────────────────────────────────────────────
+function renderDashboard() {
+  const map = window._m3DeptSummary;
+  const rawRows = glData['m3'];
+  if (!map || !Object.keys(map).length) {
+    document.getElementById('dash-empty').classList.remove('hidden');
+    document.getElementById('dash-content').classList.add('hidden');
+    return;
+  }
+  document.getElementById('dash-empty').classList.add('hidden');
+  document.getElementById('dash-content').classList.remove('hidden');
+
+  // 初始化日期選單（只在首次或資料更新時）
+  initDatePicker();
+
+  // 日期篩選後的分類帳原始資料
+  const filteredRaw = filterRowsByDate(rawRows || []);
+
+  // 依部門重新彙總（帶日期篩選）
+  const allDepts = Object.keys(map).sort();
+  const filteredMap = {};
+  allDepts.forEach(dept => {
+    const drows = filteredRaw.filter(r => r['部門代號'] === dept);
+    const codeGroup = {};
+    drows.forEach(r => {
+      const k = r['會計項目代號'];
+      if (!codeGroup[k]) codeGroup[k] = { name: r['會計項目名稱'], dr: 0, cr: 0 };
+      codeGroup[k].dr += parseAmt(r['借方金額']);
+      codeGroup[k].cr += parseAmt(r['貸方金額']);
+    });
+    filteredMap[dept] = Object.entries(codeGroup).map(([code, { name, dr, cr }]) => ({
+      code, name, dr, cr, amt: calcAmount(code, dr, cr)
+    }));
+  });
+
+  // 過濾掉無資料部門（日期篩選後可能全部為 0）
+  const depts = allDepts.filter(d => filteredMap[d].length > 0);
+
+  // ── 計算統計 ──────────────────────────────────────
+  const codeAmtMap = {};
+  const deptTotals = {};
+  depts.forEach(dept => {
+    let dDr = 0, dCr = 0, dExp = 0, dRev = 0;
+    filteredMap[dept].forEach(r => {
+      dDr += r.dr; dCr += r.cr;
+      const f = String(r.code)[0];
+      if (f === '4' || f === '7') dRev += r.amt; else dExp += r.amt;
+      if (!codeAmtMap[r.code]) codeAmtMap[r.code] = { name: r.name, amt: 0 };
+      codeAmtMap[r.code].amt += Math.abs(r.amt);
+    });
+    deptTotals[dept] = { dr: dDr, cr: dCr, exp: dExp, rev: dRev };
+  });
+
+  // ── 期間標籤 ─────────────────────────────────────
+  const { year, month } = getDateFilter();
+  const periodLabel = year
+    ? (month ? `${year} 年 ${month} 月` : `${year} 年`)
+    : (month ? `${month} 月` : '全期間');
+
+  // ── KPI Cards ─────────────────────────────────────
+  const kpiEl = document.getElementById('dash-kpis');
+  const totalExpAll = depts.reduce((s, d) => s + deptTotals[d].exp, 0);
+  const totalRevAll = depts.reduce((s, d) => s + deptTotals[d].rev, 0);
+  const netIncome   = totalRevAll - totalExpAll;
+  kpiEl.innerHTML = `
+    <div class="summary-card">
+      <div class="summary-label">期間</div>
+      <div class="summary-value ok" style="font-size:14px;letter-spacing:.02em;">${periodLabel}</div>
+    </div>
+    <div class="summary-card"><div class="summary-label">總收入</div><div class="summary-value ok" style="font-size:16px">${fmtK(totalRevAll)}</div></div>
+    <div class="summary-card"><div class="summary-label">總費用</div><div class="summary-value warn" style="font-size:16px">${fmtK(totalExpAll)}</div></div>
+    <div class="summary-card"><div class="summary-label">淨損益</div><div class="summary-value" style="font-size:16px;color:${netIncome >= 0 ? 'var(--accent)' : 'var(--danger)'}">${fmtK(netIncome)}</div></div>
+  `;
+
+  // ── 部門篩選下拉 ────────────────────────────────────
+  const sel = document.getElementById('dash-dept-filter');
+  const curVal = sel.value;
+  sel.innerHTML = '<option value="">全部部門</option>';
+  depts.forEach(d => {
+    const opt = document.createElement('option');
+    opt.value = d; opt.textContent = d;
+    if (d === curVal) opt.selected = true;
+    sel.appendChild(opt);
+  });
+
+  if (!depts.length) {
+    ['dept-bar','cat-pie','dr-cr'].forEach(destroyChart);
+    document.getElementById('dash-top10').innerHTML = '<div style="color:var(--text-hint);font-size:12px;padding:8px 0;">此期間無資料</div>';
+    document.getElementById('dash-detail-table').innerHTML = '<div style="padding:24px;text-align:center;color:var(--text-hint);font-size:13px;">此期間無資料</div>';
+    return;
+  }
+
+  // ── Chart 1: 各部門費用橫條圖 ─────────────────────
+  destroyChart('dept-bar');
+  const deptExpArr = depts.map(d => Math.round(deptTotals[d].exp));
+  const ctxBar = document.getElementById('chart-dept-bar').getContext('2d');
+  _charts['dept-bar'] = new Chart(ctxBar, {
+    type: 'bar',
+    data: {
+      labels: depts,
+      datasets: [{
+        label: '費用金額',
+        data: deptExpArr,
+        backgroundColor: depts.map((_, i) => CHART_COLORS[i % CHART_COLORS.length] + 'cc'),
+        borderColor:     depts.map((_, i) => CHART_COLORS[i % CHART_COLORS.length]),
+        borderWidth: 1, borderRadius: 3,
+      }]
+    },
+    options: {
+      indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ' ' + fmt(ctx.raw) } } },
+      scales: {
+        x: { ticks: { callback: v => fmtK(v), font: { size: 11 } }, grid: { color: '#e8e4dc' } },
+        y: { ticks: { font: { size: 11 } }, grid: { display: false } }
+      }
+    }
+  });
+
+  // ── Chart 2: 費用科目分佈圓餅 ────────────────────
+  destroyChart('cat-pie');
+  const catMap = { '5 營業成本': 0, '6 營業費用': 0, '8 非營業支出': 0, '其他': 0 };
+  Object.entries(codeAmtMap).forEach(([code, { amt }]) => {
+    const f = String(code)[0];
+    if (f === '5') catMap['5 營業成本'] += amt;
+    else if (f === '6') catMap['6 營業費用'] += amt;
+    else if (f === '8') catMap['8 非營業支出'] += amt;
+    else catMap['其他'] += amt;
+  });
+  const pieLabels = Object.keys(catMap).filter(k => catMap[k] > 0);
+  const ctxPie = document.getElementById('chart-cat-pie').getContext('2d');
+  _charts['cat-pie'] = new Chart(ctxPie, {
+    type: 'doughnut',
+    data: {
+      labels: pieLabels,
+      datasets: [{
+        data: pieLabels.map(k => Math.round(catMap[k])),
+        backgroundColor: ['#4a8a42cc','#2460aacc','#c4711ecc','#a0358ecc'],
+        borderColor:     ['#4a8a42','#2460aa','#c4711e','#a0358e'],
+        borderWidth: 1,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { position: 'right', labels: { font: { size: 11 }, padding: 12 } },
+        tooltip: { callbacks: { label: ctx => ` ${ctx.label}: ${fmt(ctx.raw)}` } }
+      },
+      cutout: '58%'
+    }
+  });
+
+  // ── Chart 3: 部門借貸對比 ────────────────────────
+  renderDrCrChart(depts, deptTotals);
+
+  // ── TOP10 科目 ───────────────────────────────────
+  const top10 = Object.entries(codeAmtMap)
+    .sort((a, b) => b[1].amt - a[1].amt).slice(0, 10);
+  const maxAmt = top10[0]?.[1]?.amt || 1;
+  let top10Html = '';
+  top10.forEach(([code, { name, amt }], i) => {
+    const pct = Math.round(amt / maxAmt * 100);
+    top10Html += `<div style="margin-bottom:8px;">
+      <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:3px;">
+        <span style="color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:140px;" title="${name}">${name}</span>
+        <span style="font-family:var(--mono);font-weight:500;color:var(--text)">${fmtK(amt)}</span>
+      </div>
+      <div style="height:5px;background:var(--surface2);border-radius:3px;">
+        <div style="height:100%;width:${pct}%;background:${CHART_COLORS[i % 5]};border-radius:3px;"></div>
+      </div>
+    </div>`;
+  });
+  document.getElementById('dash-top10').innerHTML = top10Html;
+
+  // 儲存篩選後的彙總供明細表使用
+  window._filteredMap = filteredMap;
+
+  // ── 明細表 ───────────────────────────────────────
+  renderDeptDetail();
+}
+
+function fmtK(n) {
+  if (!n && n !== 0) return '—';
+  const abs = Math.abs(n);
+  const sign = n < 0 ? '-' : '';
+  if (abs >= 1000000) return sign + (abs / 1000000).toFixed(1) + 'M';
+  if (abs >= 1000)    return sign + Math.round(abs / 1000) + 'K';
+  return sign + Math.round(abs).toLocaleString();
+}
+
+function renderDrCrChart(depts, deptTotals) {
+  const sel = document.getElementById('dash-dept-filter');
+  const filterDept = sel ? sel.value : '';
+  const showDepts = filterDept ? [filterDept] : depts;
+
+  destroyChart('dr-cr');
+  const ctxDrCr = document.getElementById('chart-dr-cr').getContext('2d');
+  _charts['dr-cr'] = new Chart(ctxDrCr, {
+    type: 'bar',
+    data: {
+      labels: showDepts,
+      datasets: [
+        {
+          label: '借方',
+          data: showDepts.map(d => Math.round(deptTotals[d]?.dr || 0)),
+          backgroundColor: '#2460aa88', borderColor: '#2460aa', borderWidth: 1, borderRadius: 2,
+        },
+        {
+          label: '貸方',
+          data: showDepts.map(d => Math.round(deptTotals[d]?.cr || 0)),
+          backgroundColor: '#4a8a4288', borderColor: '#4a8a42', borderWidth: 1, borderRadius: 2,
+        }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { labels: { font: { size: 11 } } },
+        tooltip: { callbacks: { label: ctx => ` ${ctx.dataset.label}: ${fmt(ctx.raw)}` } }
+      },
+      scales: {
+        x: { ticks: { font: { size: 11 } }, grid: { display: false } },
+        y: { ticks: { callback: v => fmtK(v), font: { size: 11 } }, grid: { color: '#e8e4dc' } }
+      }
+    }
+  });
+}
+
+function renderDeptDetail() {
+  // 使用日期篩選後的彙總資料（若存在），否則退回原始 map
+  const map = window._filteredMap || window._m3DeptSummary;
+  if (!map) return;
+
+  const sel = document.getElementById('dash-dept-filter');
+  const filterDept = sel ? sel.value : '';
+  const q = (document.getElementById('dash-search')?.value || '').toLowerCase();
+  const allDepts = Object.keys(map).sort();
+
+  // re-render dr-cr chart with filter
+  const deptTotals = {};
+  allDepts.forEach(dept => {
+    let dDr = 0, dCr = 0;
+    map[dept].forEach(r => { dDr += r.dr; dCr += r.cr; });
+    deptTotals[dept] = { dr: dDr, cr: dCr };
+  });
+  renderDrCrChart(allDepts, deptTotals);
+
+  const showDepts = filterDept ? [filterDept] : allDepts;
+
+  // 組成扁平列陣列（帶 dept 欄位），再搜尋、排序
+  let flatRows = [];
+  showDepts.forEach(dept => {
+    (map[dept] || []).forEach(r => {
+      if (q && !dept.toLowerCase().includes(q) &&
+          !r.name.toLowerCase().includes(q) &&
+          !r.code.toLowerCase().includes(q)) return;
+      flatRows.push({ dept, ...r });
+    });
+  });
+  flatRows = sortDetailRows(flatRows);
+
+  // 排序欄指示符
+  const sortCol = document.getElementById('dash-sort-col')?.value || 'dept';
+  const arrow = _sortDir === 'asc' ? ' ↑' : ' ↓';
+  const thStyle = (col) =>
+    `padding:8px 14px;background:var(--surface2);border-bottom:1px solid var(--border);
+     font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--text-muted);
+     cursor:pointer;white-space:nowrap;user-select:none;` +
+    (sortCol === col ? 'color:var(--accent);' : '');
+  const setSort = (col) => `onclick="setSortCol('${col}')"`;
+
+  let html = `<table style="width:100%;border-collapse:collapse;font-size:12px;">
+    <thead><tr>
+      <th style="${thStyle('dept')}text-align:left;" ${setSort('dept')}>部門${sortCol==='dept'?arrow:''}</th>
+      <th style="${thStyle('code')}text-align:left;" ${setSort('code')}>科目代號${sortCol==='code'?arrow:''}</th>
+      <th style="${thStyle('name')}text-align:left;" ${setSort('name')}>科目名稱${sortCol==='name'?arrow:''}</th>
+      <th style="${thStyle('dr')}text-align:right;font-family:var(--mono);" ${setSort('dr')}>借方${sortCol==='dr'?arrow:''}</th>
+      <th style="${thStyle('cr')}text-align:right;font-family:var(--mono);" ${setSort('cr')}>貸方${sortCol==='cr'?arrow:''}</th>
+      <th style="${thStyle('amt')}text-align:right;font-family:var(--mono);" ${setSort('amt')}>金額${sortCol==='amt'?arrow:''}</th>
+    </tr></thead><tbody>`;
+
+  if (flatRows.length === 0) {
+    html += `<tr><td colspan="6" style="padding:24px;text-align:center;color:var(--text-hint);">無符合條件的資料</td></tr>`;
+  } else {
+    flatRows.forEach(r => {
+      const amtColor = r.amt < 0 ? 'color:var(--danger)' : '';
+      html += `<tr style="border-bottom:1px solid var(--border);" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''">
+        <td style="padding:6px 14px;"><span class="badge badge-dept">${r.dept}</span></td>
+        <td style="padding:6px 14px;font-family:var(--mono);font-size:11px;color:var(--text-muted)">${r.code}</td>
+        <td style="padding:6px 14px;">${r.name}</td>
+        <td style="padding:6px 14px;text-align:right;font-family:var(--mono)">${fmt(r.dr)}</td>
+        <td style="padding:6px 14px;text-align:right;font-family:var(--mono)">${fmt(r.cr)}</td>
+        <td style="padding:6px 14px;text-align:right;font-family:var(--mono);font-weight:600;${amtColor}">${fmt(r.amt)}</td>
+      </tr>`;
+    });
+  }
+  html += '</tbody></table>';
+  document.getElementById('dash-detail-table').innerHTML = html;
+}
+
+function setSortCol(col) {
+  const sel = document.getElementById('dash-sort-col');
+  if (sel.value === col) {
+    // 同欄位點擊 → 切換方向
+    toggleSortDir();
+  } else {
+    sel.value = col;
+    renderDeptDetail();
+  }
+}
+
+// ==================== TEMPLATE DOWNLOAD ====================
+function downloadTemplate() {
+  // A欄=會計項目代號, B欄=會計項目名稱, 其餘依標題名稱辨識
+  const headers = ['會計項目代號','會計項目名稱','日期','傳票號碼','摘要','借方金額','貸方金額'];
+  const sampleData = [
+    ['4100','銷貨收入','2024-12-05','JV240001','G100 12月銷售貨款',0,1500000],
+    ['4101001','營業收入-物流費','2024-12-05','JV240002','G100 12月物流收入',0,200000],
+    ['5100','進貨','2024-12-10','JV240003','G100 12月進貨',800000,0],
+    ['6010','固定薪資','2024-12-10','JV240004','G100 12月薪資',320000,0],
+    ['6020','租金','2024-12-10','JV240005','G100 12月租金',80000,0],
+    ['4100','銷貨收入','2024-12-05','JV240006','A100 12月銷售貨款',0,980000],
+    ['4101001','營業收入-物流費','2024-12-05','JV240007','A100 12月物流收入',0,150000],
+    ['5100','進貨','2024-12-10','JV240008','A100 12月進貨',500000,0],
+    ['6010','固定薪資','2024-12-10','JV240009','A100 12月薪資',250000,0],
+  ];
+  if (typeof XLSX === 'undefined') { alert('請稍候，SheetJS 尚未載入'); return; }
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.aoa_to_sheet([headers, ...sampleData]);
+  ws['!cols'] = [14,16,12,12,22,12,12].map(w => ({ wch: w }));
+  XLSX.utils.book_append_sheet(wb, ws, '損益分類帳');
+  XLSX.writeFile(wb, '損益分類帳範本.xlsx');
+}
+</script>
+</body>
+</html>
