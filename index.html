@@ -634,6 +634,23 @@
       <div class="section-heading"><h3>每月3號結帳 — 部門／科目實績彙總</h3><div class="section-line"></div></div>
 
       <div class="panel">
+        <div class="panel-header"><span class="panel-title">存貨金額輸入（選填）</span></div>
+        <div class="panel-body" style="display:flex;flex-direction:column;gap:10px;">
+          <div style="font-size:12px;color:var(--text-muted);">期初／期末商品存貨屬資產科目，不在分類帳借貸中，請手動輸入。若未填入則以 0 計算。</div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>期初商品存貨（元）</label>
+              <input type="text" id="inv-begin" placeholder="例：373328557" oninput="updateInventoryInputs()">
+            </div>
+            <div class="form-group">
+              <label>減：期末商品存貨（元）</label>
+              <input type="text" id="inv-end" placeholder="例：359082006（請填正數，系統自動取負）" oninput="updateInventoryInputs()">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
         <div class="panel-header"><span class="panel-title">上傳損益分類帳 Excel</span></div>
         <div class="panel-body" style="display:flex;flex-direction:column;gap:14px;">
           <div>
@@ -742,11 +759,11 @@ const KB_RAW = `銷貨收入,4100
 營業成本-運費,5101007
 營業成本-薪資,5101088,5101090,5101091,5101092,5101093,5101094,5101095,5101096,5101097
 營業成本-包裝費,5101001
-營業成本-獎勵金,5101011,5101013
+營業成本-獎勵金,5101011,5101012,5101013,5101016
 營業成本-其他,5101099
 減：進貨退出與折讓,5110
 減：期末商品存貨,pass
-銷貨成本調整,pass
+銷貨成本調整,5150,5120
 營業成本合計,pass
 營業毛利（或毛損),pass
 固定薪資,6010
@@ -759,7 +776,7 @@ const KB_RAW = `銷貨收入,4100
 職工福利金,6190
 退職退休金,6560
 訓練費,6220
-人員招募,6080
+人員招募,pass
 員工酬勞及董監酬勞,6013
 租金,6020
 折舊,6150
@@ -776,7 +793,7 @@ const KB_RAW = `銷貨收入,4100
 交際費,6110
 文具印刷費,6030001
 勞務費,6390
-雜費,6551
+雜費,6551,6080
 捐贈,6120
 稅捐,6130
 權利金,6280
@@ -791,7 +808,7 @@ const KB_RAW = `銷貨收入,4100
 非營業支出, 8010,8070,8030
 非營業收支總額,pass
 稅前損益,pass
-所得稅費用,pass
+所得稅費用,9013
 本期損益,pass`;
 
 const KB = {};
@@ -810,6 +827,9 @@ KB_RAW.split('\n').forEach(line => {
 document.getElementById('kb-status').textContent = `知識庫：${Object.keys(KB).length} 項科目已載入`;
 document.getElementById('kb-status').style.background = '#e8f0e6';
 document.getElementById('kb-status').style.color = '#2d5a27';
+
+// 初始化存貨輸入
+window._inventoryInputs = { periodBegin: 0, periodEnd: 0 };
 
 // ==================== NAVIGATION ====================
 function switchPage(name) {
@@ -1131,12 +1151,22 @@ function copyTable(id) {
 // ==================== SAMPLE DATA ====================
 function clearMode3() {
   glData['m3'] = null;
+  window._inventoryInputs = { periodBegin: 0, periodEnd: 0 };
+  document.getElementById('inv-begin').value = '';
+  document.getElementById('inv-end').value = '';
   document.getElementById('m3-file-info').classList.add('hidden');
   document.getElementById('m3-file-info').innerHTML = '';
   document.getElementById('m3-sheet-selector').classList.add('hidden');
   document.getElementById('m3-drop').classList.remove('loaded');
   document.getElementById('m3-results').classList.add('hidden');
   setStatus('m3-status','idle','等待上傳 Excel 檔案…');
+}
+
+function updateInventoryInputs() {
+  const begin = parseAmt(document.getElementById('inv-begin').value) || 0;
+  const end   = parseAmt(document.getElementById('inv-end').value)   || 0;
+  window._inventoryInputs = { periodBegin: begin, periodEnd: end };
+  clearPlCache(); // 存貨異動後清快取，下次計算會重算
 }
 
 // ==================== EXCEL HANDLING ====================
@@ -1382,88 +1412,145 @@ const PL_ROWS = [
 ];
 
 // ==================== P&L 計算引擎 ====================
-// 快取：同一份 deptRows 只算一次，避免重複計算
 let _plCache = null;
 let _plCacheRows = null;
 
 function clearPlCache() { _plCache = null; _plCacheRows = null; }
 
 /**
- * 取得損益表各科目的實績金額。
- * - 直接科目：從分類帳查代號計算
- * - 推導科目（pass）：依損益表公式推算
- * 回傳值的符號規則：
- *   收入類正數表示有收入；費用/成本類正數表示有費用；
- *   小計/合計的正負代表「損益方向」（淨收入為正，淨費用為正代表費用）
+ * 【修正1】進貨（5100）
+ * 分類帳月底有「結轉」貸方分錄，借貸相抵後淨額=0。
+ * 正確做法：借方加總 - 貸方中「非結轉」部分（折讓貸方）
+ * = 借方加總 - 包含「結轉」字樣以外的貸方
+ */
+function calcPurchases(rows) {
+  const code5100 = rows.filter(r => r['會計項目代號'] === '5100');
+  let totalDr = 0, nonTransferCr = 0;
+  code5100.forEach(r => {
+    const dr = parseAmt(r['借方金額']);
+    const cr = parseAmt(r['貸方金額']);
+    totalDr += dr;
+    // 排除摘要含「結轉」的貸方（月底結轉分錄）
+    if (cr > 0 && !String(r['摘要'] || '').includes('結轉')) {
+      nonTransferCr += cr;
+    }
+  });
+  return totalDr - nonTransferCr;
+}
+
+/**
+ * 【修正2】減：進貨退出與折讓（5110）
+ * 分類帳月底有「結轉」借方分錄，借貸相抵後淨額=0。
+ * 正確做法：只取貸方加總（排除含「結轉」的借方）= 實際退貨金額
+ * 在損益表中為扣除項，以負值顯示
+ */
+function calcPurchaseReturns(rows) {
+  const code5110 = rows.filter(r => r['會計項目代號'] === '5110');
+  let realCr = 0;
+  code5110.forEach(r => {
+    const cr = parseAmt(r['貸方金額']);
+    if (cr > 0) realCr += cr;
+  });
+  return -realCr; // 負值：扣除項
+}
+
+/**
+ * 【修正3】銷貨成本調整（5150 + 5120）
+ * 5150 主體是「銷貨成本結轉」大額分錄，不計入調整。
+ * 調整項 = 5150 中「非主要銷貨成本」的借方（變價調整/報廢/盤損等）
+ *         + 5120 的貸方淨額（季獎勵金調整）
+ * 辨別方式：5150 借方中不含「銷貨成本」字樣的分錄
+ */
+function calcCostAdj(rows) {
+  let adj = 0;
+  // 5150：只取不含「銷貨成本」字樣的借方
+  rows.filter(r => r['會計項目代號'] === '5150').forEach(r => {
+    const memo = String(r['摘要'] || '');
+    const dr = parseAmt(r['借方金額']);
+    if (dr > 0 && !memo.includes('銷貨成本')) {
+      adj += dr;
+    }
+  });
+  // 5120：貸方淨額（貸方為正數調整）
+  rows.filter(r => r['會計項目代號'] === '5120').forEach(r => {
+    const cr = parseAmt(r['貸方金額']);
+    const dr = parseAmt(r['借方金額']);
+    adj += (cr - dr); // 貸>借表示正向調整金額
+  });
+  return adj;
+}
+
+/**
+ * 【修正4】期初商品存貨（1191）
+ * 1191 是資產科目，期初餘額不在本月分類帳借貸，無法自動算出。
+ * → 從 window._inventoryInputs 取得使用者輸入值，預設 0
+ */
+function getInventoryInput(key) {
+  return (window._inventoryInputs && window._inventoryInputs[key]) || 0;
+}
+
+/**
+ * 損益表完整計算
  */
 function buildPlValues(deptRows) {
   if (_plCacheRows === deptRows && _plCache) return _plCache;
 
-  const v = {}; // name -> 金額
+  const v = {};
 
-  // ── 直接從分類帳計算的科目 ──────────────────────────
   const direct = (name) => {
     const entry = KB[name];
     if (!entry || entry.pass || !entry.codes.length) return 0;
     return calcByCodes(deptRows, entry.codes);
   };
 
-  // ── 收入類直接科目 ──────────────────────────────────
-  v['銷貨收入']              = direct('銷貨收入');
-  v['減：銷貨退回與折讓']    = direct('減：銷貨退回與折讓');  // 4110 貸-借（通常為負/小值）
-  v['營業收入-物流費']       = direct('營業收入-物流費');
-  v['營業收入-其他配送']     = direct('營業收入-其他配送');
-  v['營業收入-轉運收入']     = direct('營業收入-轉運收入');
-  v['營業收入-勞務收入']     = direct('營業收入-勞務收入');
-  v['營業收入-電子商務']     = direct('營業收入-電子商務');
-  v['營業收入-獎勵金']       = direct('營業收入-獎勵金');
+  // ── 收入類 ─────────────────────────────────────────
+  v['銷貨收入']            = direct('銷貨收入');             // 4100 貸-借
+  v['減：銷貨退回與折讓']  = direct('減：銷貨退回與折讓');   // 4110 貸-借（負值）
+  v['銷貨收入淨額']        = v['銷貨收入'] + v['減：銷貨退回與折讓'];
+  v['營業收入-物流費']     = direct('營業收入-物流費');
+  v['營業收入-其他配送']   = direct('營業收入-其他配送');
+  v['營業收入-轉運收入']   = direct('營業收入-轉運收入');
+  v['營業收入-勞務收入']   = direct('營業收入-勞務收入');
+  v['營業收入-電子商務']   = direct('營業收入-電子商務');
+  v['營業收入-獎勵金']     = direct('營業收入-獎勵金');
+  v['營業收入合計']        =
+    v['銷貨收入淨額'] + v['營業收入-物流費'] + v['營業收入-其他配送'] +
+    v['營業收入-轉運收入'] + v['營業收入-勞務收入'] +
+    v['營業收入-電子商務'] + v['營業收入-獎勵金'];
 
-  // ── 收入推導 ──────────────────────────────────────
-  // 銷貨收入淨額 = 銷貨收入 + 減：銷貨退回與折讓
-  // （4110 以貸-借計算，通常為負數，加總即為扣除效果；若為正則代表有折讓收回）
-  v['銷貨收入淨額'] = v['銷貨收入'] + v['減：銷貨退回與折讓'];
+  // ── 成本類 ─────────────────────────────────────────
+  // 【修正1】期初存貨：分類帳無法取得，取使用者輸入值
+  v['期初商品存貨']        = getInventoryInput('periodBegin');
 
-  // 營業收入合計 = 銷貨收入淨額 + 各加項收入
-  v['營業收入合計'] =
-    v['銷貨收入淨額'] +
-    v['營業收入-物流費'] +
-    v['營業收入-其他配送'] +
-    v['營業收入-轉運收入'] +
-    v['營業收入-勞務收入'] +
-    v['營業收入-電子商務'] +
-    v['營業收入-獎勵金'];
+  // 【修正2】進貨：排除月底結轉後的借方淨額
+  v['進貨']                = calcPurchases(deptRows);
 
-  // ── 成本類直接科目 ────────────────────────────────
-  v['期初商品存貨']          = direct('期初商品存貨');
-  v['進貨']                  = direct('進貨');
-  v['營業成本-運費']         = direct('營業成本-運費');
-  v['營業成本-薪資']         = direct('營業成本-薪資');
-  v['營業成本-包裝費']       = direct('營業成本-包裝費');
-  v['營業成本-獎勵金']       = direct('營業成本-獎勵金');
-  v['營業成本-其他']         = direct('營業成本-其他');
-  v['減：進貨退出與折讓']    = direct('減：進貨退出與折讓'); // 5110 借-貸（通常為負）
+  v['營業成本-運費']       = direct('營業成本-運費');
+  v['營業成本-薪資']       = direct('營業成本-薪資');
+  v['營業成本-包裝費']     = direct('營業成本-包裝費');
+  // 【修正3】獎勵金：新增 5101012, 5101016
+  v['營業成本-獎勵金']     = direct('營業成本-獎勵金');
+  v['營業成本-其他']       = direct('營業成本-其他');
 
-  // 減：期末商品存貨、銷貨成本調整 在分類帳中通常無對應代號（pass），設為 0
-  v['減：期末商品存貨']  = 0;
-  v['銷貨成本調整']      = 0;
+  // 【修正4】減：進貨退出：取貸方加總（排除結轉借方），回傳負值
+  v['減：進貨退出與折讓']  = calcPurchaseReturns(deptRows);
 
-  // 營業成本合計 = 期初存貨 + 進貨 + 各成本項目 + 進貨退出折讓（已為負或扣項） - 期末存貨 + 調整
+  // 【修正5】期末存貨：分類帳無法取得，取使用者輸入值（以負值傳入）
+  v['減：期末商品存貨']    = -Math.abs(getInventoryInput('periodEnd'));
+
+  // 【修正6】銷貨成本調整：從 5150 非主體分錄 + 5120 取得
+  v['銷貨成本調整']        = calcCostAdj(deptRows);
+
   v['營業成本合計'] =
-    v['期初商品存貨'] +
-    v['進貨'] +
-    v['營業成本-運費'] +
-    v['營業成本-薪資'] +
-    v['營業成本-包裝費'] +
-    v['營業成本-獎勵金'] +
-    v['營業成本-其他'] +
-    v['減：進貨退出與折讓'] +   // 5110 借-貸，正值表示扣除
-    v['減：期末商品存貨'] +      // 通常為負（扣減）
-    v['銷貨成本調整'];
+    v['期初商品存貨'] + v['進貨'] +
+    v['營業成本-運費'] + v['營業成本-薪資'] + v['營業成本-包裝費'] +
+    v['營業成本-獎勵金'] + v['營業成本-其他'] +
+    v['減：進貨退出與折讓'] + v['減：期末商品存貨'] + v['銷貨成本調整'];
 
-  // 營業毛利 = 營業收入合計 - 營業成本合計
   v['營業毛利（或毛損)'] = v['營業收入合計'] - v['營業成本合計'];
 
-  // ── 費用類直接科目 ────────────────────────────────
+  // ── 費用類 ─────────────────────────────────────────
+  // 【修正7】人員招募改為 pass（6080 實際歸入雜費），雜費代號增加 6080
   const expItems = [
     '固定薪資','加班費','年終獎金','伙食費','勞保費','健保費',
     '兼職保險、團保費','職工福利金','退職退休金','訓練費','人員招募',
@@ -1473,40 +1560,25 @@ function buildPlValues(deptRows) {
     '交際費','文具印刷費','勞務費','雜費','捐贈','稅捐','權利金','呆帳損失',
   ];
   expItems.forEach(name => { v[name] = direct(name); });
+  v['營業費用總額'] = expItems.reduce((s, n) => s + (v[n] || 0), 0);
 
-  // 營業費用總額 = 所有費用科目加總
-  v['營業費用總額'] = expItems.reduce((s, name) => s + (v[name] || 0), 0);
-
-  // 營業利益 = 營業毛利 - 營業費用總額
   v['營業利益（或損失)'] = v['營業毛利（或毛損)'] - v['營業費用總額'];
 
-  // ── 非營業收支 ────────────────────────────────────
-  v['利息收入']              = direct('利息收入');
-  v['其他收入']              = direct('其他收入');
-  v['租金收入']              = direct('租金收入');
-  v['存貨盤盈(虧)']          = 0;   // pass，無對應代號
-  v['處分投資利益(損失)']    = 0;   // pass
-  v['非營業支出']            = direct('非營業支出');
+  // ── 非營業收支 ─────────────────────────────────────
+  v['利息收入']           = direct('利息收入');
+  v['其他收入']           = direct('其他收入');
+  v['租金收入']           = direct('租金收入');
+  v['存貨盤盈(虧)']       = 0;
+  v['處分投資利益(損失)'] = 0;
+  v['非營業支出']         = direct('非營業支出');
+  v['非營業收入總額']     = v['利息收入'] + v['其他收入'] + v['租金收入'] +
+                            v['存貨盤盈(虧)'] + v['處分投資利益(損失)'];
+  v['非營業收支總額']     = v['非營業收入總額'] - v['非營業支出'];
 
-  // 非營業收入總額 = 各非營業收入加總
-  v['非營業收入總額'] =
-    v['利息收入'] +
-    v['其他收入'] +
-    v['租金收入'] +
-    v['存貨盤盈(虧)'] +
-    v['處分投資利益(損失)'];
-
-  // 非營業收支總額 = 非營業收入總額 - 非營業支出
-  v['非營業收支總額'] = v['非營業收入總額'] - v['非營業支出'];
-
-  // 稅前損益 = 營業利益 + 非營業收支總額
-  v['稅前損益'] = v['營業利益（或損失)'] + v['非營業收支總額'];
-
-  // 所得稅費用（直接科目，若知識庫有代號則查，否則 0）
-  v['所得稅費用'] = direct('所得稅費用') || 0;
-
-  // 本期損益 = 稅前損益 - 所得稅費用
-  v['本期損益'] = v['稅前損益'] - v['所得稅費用'];
+  // 【修正8】所得稅費用：代號改為 9013（借-貸）
+  v['稅前損益']           = v['營業利益（或損失)'] + v['非營業收支總額'];
+  v['所得稅費用']         = direct('所得稅費用');
+  v['本期損益']           = v['稅前損益'] - v['所得稅費用'];
 
   _plCache = v;
   _plCacheRows = deptRows;
